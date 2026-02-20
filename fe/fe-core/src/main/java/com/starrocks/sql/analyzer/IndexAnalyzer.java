@@ -110,7 +110,8 @@ public class IndexAnalyzer {
         // S2 index supports 1-column (WKT/geo) or 2-column (lat, lng) mode
         if (indexDef.getIndexType() == IndexDef.IndexType.S2) {
             if (indexDef.getColumns().size() != 1 && indexDef.getColumns().size() != 2) {
-                throw new SemanticException(indexDef.getIndexName() + " S2 index requires 1 column (WKT/geo) or 2 columns (lat, lng).");
+                throw new SemanticException(indexDef.getIndexName() +
+                        " S2 index requires 1 column (WKT/geo) or 2 columns (lat, lng).");
             }
         } else if (indexDef.getColumns().size() != 1) {
             throw new SemanticException(indexDef.getIndexName() + " index can only apply to a single column.");

@@ -19,9 +19,9 @@ import com.starrocks.catalog.Column;
 import com.starrocks.common.Config;
 import com.starrocks.sql.ast.IndexDef;
 import com.starrocks.sql.ast.KeysType;
-import com.starrocks.type.DoubleType;
+import com.starrocks.type.FloatType;
 import com.starrocks.type.IntegerType;
-import com.starrocks.type.ScalarType;
+import com.starrocks.type.VarcharType;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.BeforeEach;
@@ -69,7 +69,7 @@ public class S2IndexAnalyzerTest {
     @Test
     public void testCheckS2IndexWithDoubleColumn() {
         // DOUBLE column should be valid for S2 index (lat/lng mode)
-        Column column = new Column("lat", DoubleType.DOUBLE, false, null, true, NULL_DEFAULT_VALUE, "");
+        Column column = new Column("lat", FloatType.DOUBLE, false, null, true, NULL_DEFAULT_VALUE, "");
         Map<String, String> properties = new HashMap<>();
         IndexAnalyzer.checkS2IndexValid(column, properties, KeysType.DUP_KEYS);
     }
@@ -77,7 +77,7 @@ public class S2IndexAnalyzerTest {
     @Test
     public void testCheckS2IndexWithVarcharColumn() {
         // VARCHAR column should be valid for S2 index (WKT mode)
-        Column column = new Column("geo", ScalarType.createVarcharType(65535), false, null, true, NULL_DEFAULT_VALUE, "");
+        Column column = new Column("geo", new VarcharType(65535), false, null, true, NULL_DEFAULT_VALUE, "");
         Map<String, String> properties = new HashMap<>();
         IndexAnalyzer.checkS2IndexValid(column, properties, KeysType.DUP_KEYS);
     }
@@ -94,7 +94,7 @@ public class S2IndexAnalyzerTest {
     @Test
     public void testCheckS2IndexDisabledByConfig() {
         Config.enable_experimental_s2 = false;
-        Column column = new Column("lat", DoubleType.DOUBLE, false, null, true, NULL_DEFAULT_VALUE, "");
+        Column column = new Column("lat", FloatType.DOUBLE, false, null, true, NULL_DEFAULT_VALUE, "");
         Map<String, String> properties = new HashMap<>();
         Assertions.assertThrows(SemanticException.class,
                 () -> IndexAnalyzer.checkS2IndexValid(column, properties, KeysType.DUP_KEYS));
@@ -103,7 +103,7 @@ public class S2IndexAnalyzerTest {
     @Test
     public void testCheckS2IndexAggKeysRejected() {
         // AGG_KEYS table should be rejected for S2 index
-        Column column = new Column("lat", DoubleType.DOUBLE, false, null, true, NULL_DEFAULT_VALUE, "");
+        Column column = new Column("lat", FloatType.DOUBLE, false, null, true, NULL_DEFAULT_VALUE, "");
         Map<String, String> properties = new HashMap<>();
         Assertions.assertThrows(SemanticException.class,
                 () -> IndexAnalyzer.checkS2IndexValid(column, properties, KeysType.AGG_KEYS));
@@ -112,14 +112,14 @@ public class S2IndexAnalyzerTest {
     @Test
     public void testCheckS2IndexPrimaryKeys() {
         // PRIMARY_KEYS table should be valid for S2 index
-        Column column = new Column("lat", DoubleType.DOUBLE, false, null, true, NULL_DEFAULT_VALUE, "");
+        Column column = new Column("lat", FloatType.DOUBLE, false, null, true, NULL_DEFAULT_VALUE, "");
         Map<String, String> properties = new HashMap<>();
         IndexAnalyzer.checkS2IndexValid(column, properties, KeysType.PRIMARY_KEYS);
     }
 
     @Test
     public void testCheckS2IndexCellLevelValidation() {
-        Column column = new Column("lat", DoubleType.DOUBLE, false, null, true, NULL_DEFAULT_VALUE, "");
+        Column column = new Column("lat", FloatType.DOUBLE, false, null, true, NULL_DEFAULT_VALUE, "");
 
         // Valid cell_level
         Map<String, String> properties1 = new HashMap<>();
@@ -147,7 +147,7 @@ public class S2IndexAnalyzerTest {
 
     @Test
     public void testCheckS2IndexDefaultProperties() {
-        Column column = new Column("lat", DoubleType.DOUBLE, false, null, true, NULL_DEFAULT_VALUE, "");
+        Column column = new Column("lat", FloatType.DOUBLE, false, null, true, NULL_DEFAULT_VALUE, "");
         Map<String, String> properties = new HashMap<>();
         IndexAnalyzer.checkS2IndexValid(column, properties, KeysType.DUP_KEYS);
 

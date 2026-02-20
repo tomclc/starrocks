@@ -68,6 +68,8 @@ public class PhysicalOlapScanOperator extends PhysicalScanOperator {
 
     private VectorSearchOptions vectorSearchOptions = new VectorSearchOptions();
 
+    private boolean useS2Index = false;
+
     private long gtid = 0;
 
     private PhysicalOlapScanOperator() {
@@ -109,11 +111,16 @@ public class PhysicalOlapScanOperator extends PhysicalScanOperator {
         this.prunedPartitionPredicates = scanOperator.getPrunedPartitionPredicates();
         this.usePkIndex = scanOperator.isUsePkIndex();
         this.vectorSearchOptions = scanOperator.getVectorSearchOptions();
+        this.useS2Index = scanOperator.isUseS2Index();
         this.sample = scanOperator.getSample();
     }
 
     public VectorSearchOptions getVectorSearchOptions() {
         return vectorSearchOptions;
+    }
+
+    public boolean isUseS2Index() {
+        return useS2Index;
     }
 
     public long getSelectedIndexMetaId() {
@@ -321,6 +328,7 @@ public class PhysicalOlapScanOperator extends PhysicalScanOperator {
             builder.globalDicts = operator.globalDicts;
             builder.prunedPartitionPredicates = operator.prunedPartitionPredicates;
             builder.vectorSearchOptions = operator.vectorSearchOptions;
+            builder.useS2Index = operator.useS2Index;
             builder.sample = operator.getSample();
             builder.columnAccessPaths = operator.columnAccessPaths;
             return this;

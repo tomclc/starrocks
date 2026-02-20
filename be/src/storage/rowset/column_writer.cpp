@@ -45,6 +45,7 @@
 #ifndef __APPLE__
 #include "storage/index/inverted/inverted_plugin_factory.h"
 #endif
+#include "storage/index/s2/s2_index_writer.h"
 #include "base/bit/rle_encoding.h"
 #include "base/string/faststring.h"
 #include "storage/rowset/array_column_writer.h"
@@ -443,6 +444,13 @@ Status ScalarColumnWriter::init() {
         }
     }
 #endif
+    if (_opts.need_s2_index) {
+        DCHECK(_opts.tablet_index.count(IndexType::S2) > 0);
+        auto tablet_index = std::make_shared<TabletIndex>(_opts.tablet_index.at(IndexType::S2));
+        std::string index_path = _opts.standalone_index_file_paths.at(IndexType::S2);
+        RETURN_IF_ERROR(S2IndexWriter::create(tablet_index, index_path, &_s2_index_writer));
+        RETURN_IF_ERROR(_s2_index_writer->init());
+    }
     return Status::OK();
 }
 
@@ -583,6 +591,13 @@ Status ScalarColumnWriter::write_inverted_index() {
     return Status::OK();
 }
 
+Status ScalarColumnWriter::write_s2_index(uint64_t* index_size) {
+    if (_s2_index_writer) {
+        RETURN_IF_ERROR(_s2_index_writer->finish(index_size));
+    }
+    return Status::OK();
+}
+
 // write a data page into file and update ordinal index
 Status ScalarColumnWriter::_write_data_page(Page* page) {
     PagePointer pp;
@@ -690,6 +705,10 @@ Status ScalarColumnWriter::finish_current_page() {
 
 Status ScalarColumnWriter::append(const Column& column) {
     _total_mem_footprint += column.byte_size();
+    if (_s2_index_writer) {
+        // For VARCHAR/STRING columns: use WKT mode
+        RETURN_IF_ERROR(_s2_index_writer->append_wkt(column, column.size()));
+    }
     const uint8_t* ptr = column.raw_data();
     const uint8_t* null =
             is_nullable() ? down_cast<const NullableColumn*>(&column)->null_column()->raw_data() : nullptr;

@@ -107,8 +107,12 @@ public class IndexAnalyzer {
             throw new SemanticException("columns of index has duplicated.");
         }
 
-        // right now only support single column index
-        if (indexDef.getColumns().size() != 1) {
+        // S2 index supports 1-column (WKT/geo) or 2-column (lat, lng) mode
+        if (indexDef.getIndexType() == IndexDef.IndexType.S2) {
+            if (indexDef.getColumns().size() != 1 && indexDef.getColumns().size() != 2) {
+                throw new SemanticException(indexDef.getIndexName() + " S2 index requires 1 column (WKT/geo) or 2 columns (lat, lng).");
+            }
+        } else if (indexDef.getColumns().size() != 1) {
             throw new SemanticException(indexDef.getIndexName() + " index can only apply to a single column.");
         }
     }
@@ -143,6 +147,8 @@ public class IndexAnalyzer {
             checkNgramBloomFilterIndexValid(column, properties, keysType);
         } else if (indexType == IndexDef.IndexType.VECTOR) {
             checkVectorIndexValid(column, properties, keysType);
+        } else if (indexType == IndexDef.IndexType.S2) {
+            checkS2IndexValid(column, properties, keysType);
         } else {
             throw new SemanticException("Unsupported index type: " + indexType);
         }
@@ -371,6 +377,62 @@ public class IndexAnalyzer {
     private static void addDefaultVectorProperties(Map<String, String> properties,
                                                    Map<String, IndexParamItem> paramsNeedDefault) {
         paramsNeedDefault.forEach((key, value) -> properties.put(key.toLowerCase(Locale.ROOT), value.getDefaultValue()));
+    }
+
+    // S2 Index methods
+
+    /**
+     * Validates an S2 spatial index definition.
+     * For 2-column mode: both columns must be DOUBLE (lat, lng pair).
+     * For 1-column mode: column must be VARCHAR (WKT text).
+     * This method is called once per column; the 2-column coordination
+     * is handled by the caller (both columns validated individually).
+     */
+    public static void checkS2IndexValid(Column column, Map<String, String> properties, KeysType keysType) {
+        if (!Config.enable_experimental_s2) {
+            throw new SemanticException(
+                    "The S2 index is disabled, enable it by setting FE config `enable_experimental_s2` to true");
+        }
+
+        if (keysType != KeysType.DUP_KEYS && keysType != KeysType.PRIMARY_KEYS) {
+            throw new SemanticException("The S2 index can only be built on DUPLICATE or PRIMARY_KEYS table.");
+        }
+
+        // For S2 index, column must be DOUBLE (lat/lng pair mode) or VARCHAR (WKT mode)
+        PrimitiveType colType = column.getPrimitiveType();
+        if (colType != PrimitiveType.DOUBLE && !colType.isStringType()) {
+            throw new SemanticException(
+                    "The S2 index column must be DOUBLE (for lat/lng pair) or VARCHAR/CHAR/STRING (for WKT). "
+                            + "Invalid column: " + column.getName() + " of type " + colType);
+        }
+
+        // Validate properties
+        if (properties != null && !properties.isEmpty()) {
+            for (Entry<String, String> propEntry : properties.entrySet()) {
+                String upperKey = propEntry.getKey().toUpperCase(Locale.ROOT);
+                IndexParams.getInstance().checkParams(upperKey, propEntry.getValue());
+            }
+        }
+
+        // Add default properties
+        addDefaultS2Properties(properties);
+
+        // Lower all keys and values
+        if (properties != null) {
+            Map<String, String> lowerProperties = properties.entrySet().stream()
+                    .collect(Collectors.toMap(entry -> entry.getKey().toLowerCase(), entry -> entry.getValue().toLowerCase()));
+            properties.clear();
+            properties.putAll(lowerProperties);
+        }
+    }
+
+    private static void addDefaultS2Properties(Map<String, String> properties) {
+        if (properties == null) {
+            return;
+        }
+        IndexParams.getInstance().getKeySetByIndexTypeWithDefaultValue(IndexDef.IndexType.S2).entrySet()
+                .stream().filter(entry -> !properties.containsKey(entry.getKey().toLowerCase(Locale.ROOT)))
+                .forEach(entry -> properties.put(entry.getKey().toLowerCase(Locale.ROOT), entry.getValue().getDefaultValue()));
     }
 
     // BloomFilterIndexUtil methods

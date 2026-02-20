@@ -19,6 +19,7 @@ import com.starrocks.common.FeConstants;
 import com.starrocks.common.InvertedIndexParams;
 import com.starrocks.common.InvertedIndexParams.InvertedIndexImpType;
 import com.starrocks.common.NgramBfIndexParamsKey;
+import com.starrocks.common.S2IndexParams;
 import com.starrocks.common.VectorIndexParams;
 import com.starrocks.common.io.ParamsKey;
 import com.starrocks.sql.analyzer.SemanticException;
@@ -102,6 +103,15 @@ public class IndexParams {
                 false, false, "english", null);
         register(builder, IndexType.GIN, IndexParamType.SEARCH, InvertedIndexParams.SearchParamsKey.RERANK, false, false,
                 "false", null);
+
+        /* S2 Index */
+        // common
+        register(builder, IndexType.S2, IndexParamType.COMMON, S2IndexParams.CommonIndexParamKey.CELL_LEVEL,
+                false, true, "15", null);
+
+        // search
+        register(builder, IndexType.S2, IndexParamType.SEARCH, S2IndexParams.SearchParamsKey.MAX_CELLS,
+                false, true, "8", null);
 
         /* NGramFilter */
         // index

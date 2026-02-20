@@ -590,6 +590,15 @@ struct TColumnAccessPath {
     6: optional bool extended
 }
 
+struct TS2SearchOptions {
+  1: optional bool enable_s2_index;
+  2: optional i32 cell_level;
+  3: optional i32 max_cells;
+  // Serialized S2 region (cell ID ranges) for index lookup
+  4: optional list<i64> query_cell_ids_min;
+  5: optional list<i64> query_cell_ids_max;
+}
+
 struct TVectorSearchOptions {
   1: optional bool enable_use_ann;
   2: optional i64 vector_limit_k;
@@ -650,6 +659,7 @@ struct TOlapScanNode {
 
   40: optional TVectorSearchOptions vector_search_options
   41: optional TTableSampleOptions sample_options;
+  42: optional TS2SearchOptions s2_search_options;
 
   //back pressure
   50: optional bool enable_topn_filter_back_pressure
@@ -708,6 +718,7 @@ struct TLakeScanNode {
   45: optional bool enable_gin_filter
 
   46: optional i32 next_uniq_id
+  47: optional TS2SearchOptions s2_search_options;
 }
 
 struct TEqJoinCondition {

@@ -227,6 +227,7 @@ enum TIndexType {
   GIN,
   NGRAMBF,
   VECTOR,
+  S2,
 }
 
 // Not define UNKNOWN type for better compatibility with

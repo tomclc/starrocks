@@ -113,6 +113,9 @@ public:
 
     VectorSearchOptionPtr vector_search_option = nullptr;
 
+    bool use_s2_index = false;
+    std::vector<std::pair<int64_t, int64_t>> s2_query_cell_ranges; // min/max cell id pairs
+
     // Data sampling by block-level, which is a core-component of TABLE-SAMPLE feature
     // 1. Regular block smapling: Bernoulli sampling on page-id
     // 2. Partial-Sorted block: leverage data ordering to improve the evenness

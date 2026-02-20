@@ -56,6 +56,8 @@ public final class LogicalOlapScanOperator extends LogicalScanOperator {
 
     private VectorSearchOptions vectorSearchOptions = new VectorSearchOptions();
 
+    private boolean useS2Index = false;
+
     // Only for UT
     public LogicalOlapScanOperator(Table table) {
         this(table, Maps.newHashMap(), Maps.newHashMap(), null, Operator.DEFAULT_LIMIT, null);
@@ -177,6 +179,14 @@ public final class LogicalOlapScanOperator extends LogicalScanOperator {
         this.vectorSearchOptions = vectorSearchOptions;
     }
 
+    public boolean isUseS2Index() {
+        return useS2Index;
+    }
+
+    public void setUseS2Index(boolean useS2Index) {
+        this.useS2Index = useS2Index;
+    }
+
     public TableSampleClause getSample() {
         return sample;
     }
@@ -250,6 +260,7 @@ public final class LogicalOlapScanOperator extends LogicalScanOperator {
             builder.usePkIndex = scanOperator.usePkIndex;
             builder.fromSplitOR = scanOperator.fromSplitOR;
             builder.vectorSearchOptions = scanOperator.vectorSearchOptions;
+            builder.useS2Index = scanOperator.useS2Index;
             builder.sample = scanOperator.getSample();
             return this;
         }
@@ -315,6 +326,11 @@ public final class LogicalOlapScanOperator extends LogicalScanOperator {
 
         public Builder setUsePkIndex(boolean usePkIndex) {
             builder.usePkIndex = usePkIndex;
+            return this;
+        }
+
+        public Builder setUseS2Index(boolean useS2Index) {
+            builder.useS2Index = useS2Index;
             return this;
         }
 

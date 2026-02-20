@@ -1,0 +1,262 @@
+-- name: test_create_s2_index @sequential @native
+ADMIN SET FRONTEND CONFIG("enable_experimental_s2" = "true");
+-- result:
+-- !result
+CREATE DATABASE test_s2_db_${uuid0};
+-- result:
+-- !result
+USE test_s2_db_${uuid0};
+-- result:
+-- !result
+CREATE TABLE `t_s2_latlng` (
+  `id` bigint(20) NOT NULL COMMENT "",
+  `lat` double NOT NULL COMMENT "",
+  `lng` double NOT NULL COMMENT "",
+  INDEX idx_s2_geo (`lat`, `lng`) USING S2 ("cell_level" = "15")
+) ENGINE=OLAP
+DUPLICATE KEY(`id`)
+DISTRIBUTED BY HASH(`id`) BUCKETS 1
+PROPERTIES (
+"replication_num" = "1",
+"compression" = "LZ4"
+);
+-- result:
+-- !result
+SHOW CREATE TABLE t_s2_latlng;
+-- result:
+[REGEX].*S2.*
+-- !result
+DROP TABLE t_s2_latlng;
+-- result:
+-- !result
+CREATE TABLE `t_s2_wkt` (
+  `id` bigint(20) NOT NULL COMMENT "",
+  `geo` varchar(65535) NOT NULL COMMENT "",
+  INDEX idx_s2_geo (`geo`) USING S2 ("cell_level" = "15")
+) ENGINE=OLAP
+DUPLICATE KEY(`id`)
+DISTRIBUTED BY HASH(`id`) BUCKETS 1
+PROPERTIES (
+"replication_num" = "1",
+"compression" = "LZ4"
+);
+-- result:
+-- !result
+SHOW CREATE TABLE t_s2_wkt;
+-- result:
+[REGEX].*S2.*
+-- !result
+DROP TABLE t_s2_wkt;
+-- result:
+-- !result
+DROP DATABASE test_s2_db_${uuid0};
+-- result:
+-- !result
+ADMIN SET FRONTEND CONFIG("enable_experimental_s2" = "false");
+-- result:
+-- !result
+-- name: test_s2_index_ddl @sequential @native
+ADMIN SET FRONTEND CONFIG("enable_experimental_s2" = "true");
+-- result:
+-- !result
+CREATE DATABASE test_s2_ddl_db_${uuid0};
+-- result:
+-- !result
+USE test_s2_ddl_db_${uuid0};
+-- result:
+-- !result
+CREATE TABLE `t_s2_ddl` (
+  `id` bigint(20) NOT NULL COMMENT "",
+  `lat` double NOT NULL COMMENT "",
+  `lng` double NOT NULL COMMENT ""
+) ENGINE=OLAP
+DUPLICATE KEY(`id`)
+DISTRIBUTED BY HASH(`id`) BUCKETS 1
+PROPERTIES (
+"replication_num" = "1",
+"compression" = "LZ4"
+);
+-- result:
+-- !result
+CREATE INDEX idx_s2 ON t_s2_ddl (lat, lng) USING S2 ("cell_level" = "15");
+-- result:
+-- !result
+function: wait_alter_table_finish()
+-- result:
+None
+-- !result
+DROP INDEX idx_s2 ON t_s2_ddl;
+-- result:
+-- !result
+function: wait_alter_table_finish()
+-- result:
+None
+-- !result
+ALTER TABLE t_s2_ddl ADD INDEX idx_s2_alt (lat, lng) USING S2;
+-- result:
+-- !result
+function: wait_alter_table_finish()
+-- result:
+None
+-- !result
+ALTER TABLE t_s2_ddl DROP INDEX idx_s2_alt;
+-- result:
+-- !result
+function: wait_alter_table_finish()
+-- result:
+None
+-- !result
+DROP TABLE t_s2_ddl;
+-- result:
+-- !result
+DROP DATABASE test_s2_ddl_db_${uuid0};
+-- result:
+-- !result
+ADMIN SET FRONTEND CONFIG("enable_experimental_s2" = "false");
+-- result:
+-- !result
+-- name: test_s2_index_validation @sequential @native
+ADMIN SET FRONTEND CONFIG("enable_experimental_s2" = "true");
+-- result:
+-- !result
+CREATE DATABASE test_s2_val_db_${uuid0};
+-- result:
+-- !result
+USE test_s2_val_db_${uuid0};
+-- result:
+-- !result
+CREATE TABLE `t_s2_bad_type` (
+  `id` bigint(20) NOT NULL COMMENT "",
+  `geo_id` int NOT NULL COMMENT "",
+  INDEX idx_s2 (`geo_id`) USING S2
+) ENGINE=OLAP
+DUPLICATE KEY(`id`)
+DISTRIBUTED BY HASH(`id`) BUCKETS 1
+PROPERTIES (
+"replication_num" = "1"
+);
+-- result:
+[REGEX]E:.*
+-- !result
+CREATE TABLE `t_s2_three_cols` (
+  `id` bigint(20) NOT NULL COMMENT "",
+  `a` double NOT NULL COMMENT "",
+  `b` double NOT NULL COMMENT "",
+  `c` double NOT NULL COMMENT "",
+  INDEX idx_s2 (`a`, `b`, `c`) USING S2
+) ENGINE=OLAP
+DUPLICATE KEY(`id`)
+DISTRIBUTED BY HASH(`id`) BUCKETS 1
+PROPERTIES (
+"replication_num" = "1"
+);
+-- result:
+[REGEX]E:.*
+-- !result
+CREATE TABLE `t_s2_bad_level` (
+  `id` bigint(20) NOT NULL COMMENT "",
+  `lat` double NOT NULL COMMENT "",
+  `lng` double NOT NULL COMMENT "",
+  INDEX idx_s2 (`lat`, `lng`) USING S2 ("cell_level" = "0")
+) ENGINE=OLAP
+DUPLICATE KEY(`id`)
+DISTRIBUTED BY HASH(`id`) BUCKETS 1
+PROPERTIES (
+"replication_num" = "1"
+);
+-- result:
+[REGEX]E:.*
+-- !result
+DROP DATABASE test_s2_val_db_${uuid0};
+-- result:
+-- !result
+ADMIN SET FRONTEND CONFIG("enable_experimental_s2" = "false");
+-- result:
+-- !result
+-- name: test_s2_index_disabled @sequential @native
+ADMIN SET FRONTEND CONFIG("enable_experimental_s2" = "false");
+-- result:
+-- !result
+CREATE DATABASE test_s2_disabled_db_${uuid0};
+-- result:
+-- !result
+USE test_s2_disabled_db_${uuid0};
+-- result:
+-- !result
+CREATE TABLE `t_s2_disabled` (
+  `id` bigint(20) NOT NULL COMMENT "",
+  `lat` double NOT NULL COMMENT "",
+  `lng` double NOT NULL COMMENT "",
+  INDEX idx_s2 (`lat`, `lng`) USING S2
+) ENGINE=OLAP
+DUPLICATE KEY(`id`)
+DISTRIBUTED BY HASH(`id`) BUCKETS 1
+PROPERTIES (
+"replication_num" = "1"
+);
+-- result:
+[REGEX]E:.*
+-- !result
+DROP DATABASE test_s2_disabled_db_${uuid0};
+-- result:
+-- !result
+-- name: test_s2_index_insert @sequential @native
+ADMIN SET FRONTEND CONFIG("enable_experimental_s2" = "true");
+-- result:
+-- !result
+CREATE DATABASE test_s2_insert_db_${uuid0};
+-- result:
+-- !result
+USE test_s2_insert_db_${uuid0};
+-- result:
+-- !result
+CREATE TABLE `t_s2_insert` (
+  `id` bigint(20) NOT NULL COMMENT "",
+  `lat` double NOT NULL COMMENT "",
+  `lng` double NOT NULL COMMENT "",
+  INDEX idx_s2 (`lat`, `lng`) USING S2 ("cell_level" = "15")
+) ENGINE=OLAP
+DUPLICATE KEY(`id`)
+DISTRIBUTED BY HASH(`id`) BUCKETS 1
+PROPERTIES (
+"replication_num" = "1",
+"compression" = "LZ4"
+);
+-- result:
+-- !result
+INSERT INTO t_s2_insert VALUES (1, 37.7749, -122.4194);
+-- result:
+-- !result
+INSERT INTO t_s2_insert VALUES (2, 40.7128, -74.0060);
+-- result:
+-- !result
+INSERT INTO t_s2_insert VALUES (3, 51.5074, -0.1278);
+-- result:
+-- !result
+INSERT INTO t_s2_insert VALUES (4, 35.6762, 139.6503);
+-- result:
+-- !result
+INSERT INTO t_s2_insert VALUES (5, -33.8688, 151.2093);
+-- result:
+-- !result
+SELECT count(*) FROM t_s2_insert;
+-- result:
+5
+-- !result
+SELECT id, lat, lng FROM t_s2_insert ORDER BY id;
+-- result:
+1	37.7749	-122.4194
+2	40.7128	-74.006
+3	51.5074	-0.1278
+4	35.6762	139.6503
+5	-33.8688	151.2093
+-- !result
+DROP TABLE t_s2_insert;
+-- result:
+-- !result
+DROP DATABASE test_s2_insert_db_${uuid0};
+-- result:
+-- !result
+ADMIN SET FRONTEND CONFIG("enable_experimental_s2" = "false");
+-- result:
+-- !result

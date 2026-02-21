@@ -16,6 +16,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace starrocks {
 
@@ -27,6 +28,9 @@ struct SpatialSearchOption {
     double radius_meters = 0.0;
     std::string predicate_type; // "contains", "distance", "knn"
     int64_t knn_k = 0;
+    // Runtime spatial filter for joins: multiple WKT regions from build side
+    bool is_runtime_spatial_filter = false;
+    std::vector<std::string> runtime_wkt_regions;
 };
 
 using SpatialSearchOptionPtr = std::shared_ptr<SpatialSearchOption>;

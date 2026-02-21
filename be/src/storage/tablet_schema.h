@@ -375,6 +375,13 @@ public:
     Status get_indexes_for_column(int32_t col_unique_id, IndexType index_type, std::shared_ptr<TabletIndex>& res) const;
     bool has_index(int32_t col_unique_id, IndexType index_type) const;
 
+    // Returns true if this schema has a SPATIAL index
+    bool has_spatial_index() const;
+
+    // Get the (lng_col_unique_id, lat_col_unique_id) pair for the spatial index.
+    // Returns false if no spatial index exists.
+    bool get_spatial_index_columns(int32_t* lng_col_uid, int32_t* lat_col_uid) const;
+
 private:
     friend class SegmentReaderWriterTest;
     FRIEND_TEST(SegmentReaderWriterTest, estimate_segment_size);

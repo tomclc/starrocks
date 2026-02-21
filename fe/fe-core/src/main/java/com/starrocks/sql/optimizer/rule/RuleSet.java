@@ -161,6 +161,7 @@ import com.starrocks.sql.optimizer.rule.transformation.RewriteSimpleAggToMetaSca
 import com.starrocks.sql.optimizer.rule.transformation.RewriteSumByAssociativeRule;
 import com.starrocks.sql.optimizer.rule.transformation.RewriteToSpatialPlanRule;
 import com.starrocks.sql.optimizer.rule.transformation.RewriteToVectorPlanRule;
+import com.starrocks.sql.optimizer.rule.transformation.SpatialJoinRuntimeFilterRule;
 import com.starrocks.sql.optimizer.rule.transformation.ScalarApply2AnalyticRule;
 import com.starrocks.sql.optimizer.rule.transformation.ScalarApply2JoinRule;
 import com.starrocks.sql.optimizer.rule.transformation.SplitLimitRule;
@@ -253,7 +254,8 @@ public class RuleSet {
     ));
 
     public static final Rule SPATIAL_REWRITE_RULES = new CombinationRule(RuleType.GP_SPATIAL_REWRITE, ImmutableList.of(
-            new RewriteToSpatialPlanRule()
+            new RewriteToSpatialPlanRule(),
+            new SpatialJoinRuntimeFilterRule()
     ));
 
     public static final Rule PRUNE_COLUMNS_RULES = new CombinationRule(RuleType.GP_PRUNE_COLUMNS, ImmutableList.of(

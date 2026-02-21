@@ -14,15 +14,20 @@
 
 #include "compaction.h"
 
+#include <algorithm>
 #include <utility>
 
 #include "base/debug/trace.h"
 #include "base/time/time.h"
 #include "base/utility/defer_op.h"
+#include "column/column_helper.h"
+#include "column/fixed_length_column.h"
+#include "column/nullable_column.h"
 #include "gutil/strings/substitute.h"
 #include "runtime/current_thread.h"
 #include "runtime/exec_env.h"
 #include "storage/chunk_helper.h"
+#include "storage/index/spatial/spatial_index_utils.h"
 #include "storage/rowset/column_reader.h"
 #include "storage/rowset/rowset.h"
 #include "storage/rowset/rowset_factory.h"
@@ -159,6 +164,62 @@ Status Compaction::do_compaction_impl() {
     return Status::OK();
 }
 
+// Sort a chunk by S2 cell ID computed from (lng, lat) columns at the given ordinals.
+// Uses S2 cell level 16 for geographic locality clustering.
+static void _sort_chunk_by_s2_cell_id(Chunk* chunk, int lng_ordinal, int lat_ordinal) {
+    size_t num_rows = chunk->num_rows();
+    if (num_rows <= 1) return;
+
+    const Column* lng_col = chunk->get_column_by_index(lng_ordinal).get();
+    const Column* lat_col = chunk->get_column_by_index(lat_ordinal).get();
+
+    const DoubleColumn* lng_double = nullptr;
+    const DoubleColumn* lat_double = nullptr;
+    if (lng_col->is_nullable()) {
+        lng_double = down_cast<const DoubleColumn*>(
+                down_cast<const NullableColumn*>(lng_col)->data_column().get());
+    } else {
+        lng_double = down_cast<const DoubleColumn*>(lng_col);
+    }
+    if (lat_col->is_nullable()) {
+        lat_double = down_cast<const DoubleColumn*>(
+                down_cast<const NullableColumn*>(lat_col)->data_column().get());
+    } else {
+        lat_double = down_cast<const DoubleColumn*>(lat_col);
+    }
+
+    const double* lng_data = lng_double->get_data().data();
+    const double* lat_data = lat_double->get_data().data();
+
+    // Compute S2 cell IDs for sorting
+    constexpr int kSortCellLevel = 16;
+    std::vector<std::pair<uint64_t, uint32_t>> cell_id_and_index(num_rows);
+    for (size_t i = 0; i < num_rows; i++) {
+        double lng = lng_data[i];
+        double lat = lat_data[i];
+        uint64_t cell_id = 0;
+        if (SpatialIndexUtils::is_valid_lng_lat(lng, lat)) {
+            cell_id = SpatialIndexUtils::compute_cell_id(lng, lat, kSortCellLevel);
+        }
+        cell_id_and_index[i] = {cell_id, static_cast<uint32_t>(i)};
+    }
+
+    std::sort(cell_id_and_index.begin(), cell_id_and_index.end(),
+              [](const auto& a, const auto& b) { return a.first < b.first; });
+
+    // Build permutation index
+    std::vector<uint32_t> permutation(num_rows);
+    for (size_t i = 0; i < num_rows; i++) {
+        permutation[i] = cell_id_and_index[i].second;
+    }
+
+    // Reorder chunk using append_selective on a clone
+    auto sorted = chunk->clone_empty(num_rows);
+    sorted->append_selective(*chunk, permutation.data(), 0, num_rows);
+    chunk->reset();
+    chunk->swap_chunk(*sorted);
+}
+
 Status Compaction::_merge_rowsets_horizontally(size_t segment_iterator_num, Statistics* stats_output,
                                                const TabletSchemaCSPtr& tablet_schema) {
     TRACE_COUNTER_SCOPE_LATENCY_US("merge_rowsets_latency_us");
@@ -183,9 +244,70 @@ Status Compaction::_merge_rowsets_horizontally(size_t segment_iterator_num, Stat
     RETURN_IF_ERROR(reader.prepare());
     RETURN_IF_ERROR(reader.open(reader_params));
 
+    // Determine if spatial sorting should be applied during compaction
+    bool spatial_sort_enabled = false;
+    int lng_ordinal = -1;
+    int lat_ordinal = -1;
+    {
+        int32_t lng_uid = -1, lat_uid = -1;
+        if (tablet_schema->has_spatial_index() && tablet_schema->get_spatial_index_columns(&lng_uid, &lat_uid)) {
+            // Map unique IDs to schema ordinals
+            lng_ordinal = tablet_schema->field_index(lng_uid);
+            lat_ordinal = tablet_schema->field_index(lat_uid);
+            if (lng_ordinal >= 0 && lat_ordinal >= 0) {
+                spatial_sort_enabled = true;
+                LOG(INFO) << "Compaction: spatial sort enabled for tablet=" << _tablet->tablet_id()
+                          << " lng_ordinal=" << lng_ordinal << " lat_ordinal=" << lat_ordinal;
+            }
+        }
+    }
+
     int64_t output_rows = 0;
     auto chunk = ChunkHelper::new_chunk(schema, reader_params.chunk_size);
     auto char_field_indexes = ChunkHelper::get_char_field_indexes(schema);
+
+    // When spatial sort is enabled, buffer chunks per segment for sorting
+    std::vector<ChunkUniquePtr> buffered_chunks;
+    int64_t buffered_rows = 0;
+    // Flush sorted buffered chunks when we have enough for one segment (~256MB or 10M rows)
+    constexpr int64_t kSpatialSortBatchRows = 10000000;
+
+    auto flush_spatial_buffer = [&]() -> Status {
+        if (buffered_chunks.empty()) return Status::OK();
+
+        // Merge all buffered chunks into one, sort by S2 cell ID, then write
+        size_t total_rows = 0;
+        for (auto& c : buffered_chunks) {
+            total_rows += c->num_rows();
+        }
+
+        auto merged = ChunkHelper::new_chunk(schema, total_rows);
+        for (auto& c : buffered_chunks) {
+            merged->append(*c);
+        }
+        buffered_chunks.clear();
+        buffered_rows = 0;
+
+        _sort_chunk_by_s2_cell_id(merged.get(), lng_ordinal, lat_ordinal);
+
+        // Write sorted chunk in sub-chunks to respect chunk_size
+        size_t written = 0;
+        while (written < total_rows) {
+            size_t batch = std::min(static_cast<size_t>(chunk_size), total_rows - written);
+            auto sub = merged->clone_empty(batch);
+            std::vector<uint32_t> indices(batch);
+            for (size_t i = 0; i < batch; i++) {
+                indices[i] = written + i;
+            }
+            sub->append_selective(*merged, indices.data(), 0, batch);
+            if (auto st = _output_rs_writer->add_chunk(*sub); !st.ok()) {
+                LOG(WARNING) << "writer add_chunk error: " << st;
+                return st;
+            }
+            written += batch;
+        }
+        return Status::OK();
+    };
 
     Status status;
     while (!StorageEngine::instance()->bg_worker_stopped()) {
@@ -211,15 +333,30 @@ Status Compaction::_merge_rowsets_horizontally(size_t segment_iterator_num, Stat
 
         ChunkHelper::padding_char_columns(char_field_indexes, schema, tablet_schema, chunk.get());
 
-        if (auto st = _output_rs_writer->add_chunk(*chunk); !st.ok()) {
-            LOG(WARNING) << "writer add_chunk error: " << st;
-            return st;
+        if (spatial_sort_enabled) {
+            buffered_chunks.push_back(chunk->clone_unique());
+            buffered_rows += chunk->num_rows();
+            output_rows += chunk->num_rows();
+
+            if (buffered_rows >= kSpatialSortBatchRows) {
+                RETURN_IF_ERROR(flush_spatial_buffer());
+            }
+        } else {
+            if (auto st = _output_rs_writer->add_chunk(*chunk); !st.ok()) {
+                LOG(WARNING) << "writer add_chunk error: " << st;
+                return st;
+            }
+            output_rows += chunk->num_rows();
         }
-        output_rows += chunk->num_rows();
     }
 
     if (StorageEngine::instance()->bg_worker_stopped()) {
         return Status::InternalError("Process is going to quit. The compaction will stop.");
+    }
+
+    // Flush remaining buffered chunks
+    if (spatial_sort_enabled) {
+        RETURN_IF_ERROR(flush_spatial_buffer());
     }
 
     if (stats_output != nullptr) {

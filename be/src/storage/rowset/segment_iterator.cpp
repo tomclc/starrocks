@@ -300,6 +300,9 @@ private:
         std::string predicate_type;
         int64_t knn_k = 0;
         int cell_level = 16;
+        // Runtime spatial filter for joins: multiple WKT regions
+        bool is_runtime_spatial_filter = false;
+        std::vector<std::string> runtime_wkt_regions;
 
         std::shared_ptr<SpatialIndexReader> reader;
     };
@@ -816,6 +819,8 @@ SegmentIterator::SegmentIterator(std::shared_ptr<Segment> segment, Schema schema
         _spatial_index_ctx->radius_meters = _opts.spatial_search_option->radius_meters;
         _spatial_index_ctx->predicate_type = _opts.spatial_search_option->predicate_type;
         _spatial_index_ctx->knn_k = _opts.spatial_search_option->knn_k;
+        _spatial_index_ctx->is_runtime_spatial_filter = _opts.spatial_search_option->is_runtime_spatial_filter;
+        _spatial_index_ctx->runtime_wkt_regions = _opts.spatial_search_option->runtime_wkt_regions;
     }
     // For small segment file (the number of rows is less than chunk_size),
     // the segment iterator will reserve a large amount of memory,
@@ -918,6 +923,17 @@ Status SegmentIterator::_init() {
     }
     RETURN_IF_ERROR(_get_row_ranges_by_vector_index());
     RETURN_IF_ERROR(_get_row_ranges_by_spatial_index());
+
+    // Enable late materialization when spatial index filtering is highly selective.
+    // This avoids reading large non-predicate columns (e.g., WKT strings) until after
+    // spatial filtering, saving significant I/O on wide tables.
+    if (_spatial_index_ctx && _spatial_index_ctx->use_spatial_index && num_rows() > 0) {
+        double selectivity = static_cast<double>(_scan_range.span_size()) / num_rows();
+        if (selectivity < 0.1) {
+            _opts.enable_predicate_col_late_materialize = true;
+        }
+    }
+
     RETURN_IF_ERROR(_apply_data_sampling());
 
     // rewrite stage
@@ -1112,7 +1128,14 @@ Status SegmentIterator::_get_row_ranges_by_spatial_index() {
     std::vector<uint64_t> covering;
     int cell_level = _spatial_index_ctx->cell_level;
 
-    if (_spatial_index_ctx->predicate_type == "contains" && !_spatial_index_ctx->query_wkt.empty()) {
+    // Runtime spatial filter for joins: combine coverings from multiple WKT regions
+    if (_spatial_index_ctx->is_runtime_spatial_filter && !_spatial_index_ctx->runtime_wkt_regions.empty()) {
+        int max_cells = 8;
+        for (const auto& wkt : _spatial_index_ctx->runtime_wkt_regions) {
+            auto region_covering = SpatialIndexUtils::compute_covering_from_wkt(wkt, max_cells, cell_level);
+            covering.insert(covering.end(), region_covering.begin(), region_covering.end());
+        }
+    } else if (_spatial_index_ctx->predicate_type == "contains" && !_spatial_index_ctx->query_wkt.empty()) {
         // Polygon containment query — compute covering from WKT
         int max_cells = 8; // default
         covering = SpatialIndexUtils::compute_covering_from_wkt(_spatial_index_ctx->query_wkt, max_cells, cell_level);

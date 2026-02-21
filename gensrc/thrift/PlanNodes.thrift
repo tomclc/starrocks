@@ -612,6 +612,9 @@ struct TSpatialSearchOptions {
   5: optional double radius_meters;       // For distance radius queries
   6: optional string predicate_type;      // "contains", "distance", "knn"
   7: optional i64 knn_k;                  // For k-NN queries
+  // Runtime spatial filter for joins: multiple WKT regions from build side
+  8: optional bool is_runtime_spatial_filter;
+  9: optional list<string> runtime_wkt_regions;
 }
 
 enum SampleMethod {

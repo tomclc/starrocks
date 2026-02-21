@@ -108,6 +108,12 @@ Status OlapChunkSource::prepare(RuntimeState* state) {
         spatial_opt->radius_meters = spatial_opts.radius_meters;
         spatial_opt->predicate_type = spatial_opts.predicate_type;
         spatial_opt->knn_k = spatial_opts.knn_k;
+        if (spatial_opts.__isset.is_runtime_spatial_filter) {
+            spatial_opt->is_runtime_spatial_filter = spatial_opts.is_runtime_spatial_filter;
+        }
+        if (spatial_opts.__isset.runtime_wkt_regions) {
+            spatial_opt->runtime_wkt_regions = spatial_opts.runtime_wkt_regions;
+        }
         _params.spatial_search_option = spatial_opt;
         _params.use_spatial_index = true;
     }

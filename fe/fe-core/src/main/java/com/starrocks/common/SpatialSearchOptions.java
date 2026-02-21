@@ -25,6 +25,9 @@ public class SpatialSearchOptions {
     private double radiusMeters = 0.0;
     private String predicateType = "";
     private long knnK = 0;
+    // Runtime spatial filter for joins
+    private boolean runtimeSpatialFilter = false;
+    private java.util.List<String> runtimeWktRegions = new java.util.ArrayList<>();
 
     public boolean isEnableSpatialIndex() {
         return enableSpatialIndex;
@@ -82,6 +85,22 @@ public class SpatialSearchOptions {
         this.knnK = knnK;
     }
 
+    public boolean isRuntimeSpatialFilter() {
+        return runtimeSpatialFilter;
+    }
+
+    public void setRuntimeSpatialFilter(boolean runtimeSpatialFilter) {
+        this.runtimeSpatialFilter = runtimeSpatialFilter;
+    }
+
+    public java.util.List<String> getRuntimeWktRegions() {
+        return runtimeWktRegions;
+    }
+
+    public void setRuntimeWktRegions(java.util.List<String> runtimeWktRegions) {
+        this.runtimeWktRegions = runtimeWktRegions;
+    }
+
     public TSpatialSearchOptions toThrift() {
         TSpatialSearchOptions opts = new TSpatialSearchOptions();
         opts.setEnable_spatial_index(enableSpatialIndex);
@@ -91,6 +110,10 @@ public class SpatialSearchOptions {
         opts.setRadius_meters(radiusMeters);
         opts.setPredicate_type(predicateType);
         opts.setKnn_k(knnK);
+        opts.setIs_runtime_spatial_filter(runtimeSpatialFilter);
+        if (runtimeWktRegions != null && !runtimeWktRegions.isEmpty()) {
+            opts.setRuntime_wkt_regions(runtimeWktRegions);
+        }
         return opts;
     }
 
@@ -98,14 +121,22 @@ public class SpatialSearchOptions {
         StringBuilder sb = new StringBuilder();
         sb.append(prefix).append("SPATIALINDEX: ON\n");
         sb.append(prefix).append("  Predicate Type: ").append(predicateType);
+        if (runtimeSpatialFilter) {
+            sb.append(" [RUNTIME FILTER]");
+        }
         if ("contains".equals(predicateType)) {
-            sb.append(", Query WKT: ").append(queryWkt);
+            if (!runtimeSpatialFilter && !queryWkt.isEmpty()) {
+                sb.append(", Query WKT: ").append(queryWkt);
+            }
         } else if ("distance".equals(predicateType)) {
             sb.append(", Center: (").append(centerLng).append(", ").append(centerLat).append(")");
             sb.append(", Radius: ").append(radiusMeters).append("m");
         } else if ("knn".equals(predicateType)) {
             sb.append(", Center: (").append(centerLng).append(", ").append(centerLat).append(")");
             sb.append(", K: ").append(knnK);
+        }
+        if (runtimeSpatialFilter && runtimeWktRegions != null && !runtimeWktRegions.isEmpty()) {
+            sb.append(", Regions: ").append(runtimeWktRegions.size());
         }
         sb.append("\n");
         return sb.toString();

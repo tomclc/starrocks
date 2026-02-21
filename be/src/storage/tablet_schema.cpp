@@ -697,6 +697,26 @@ bool TabletSchema::has_index(int32_t col_unique_id, IndexType index_type) const 
     return false;
 }
 
+bool TabletSchema::has_spatial_index() const {
+    for (const auto& index : _indexes) {
+        if (index.index_type() == IndexType::SPATIAL) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool TabletSchema::get_spatial_index_columns(int32_t* lng_col_uid, int32_t* lat_col_uid) const {
+    for (const auto& index : _indexes) {
+        if (index.index_type() == IndexType::SPATIAL && index.col_unique_ids().size() == 2) {
+            *lng_col_uid = index.col_unique_ids()[0];
+            *lat_col_uid = index.col_unique_ids()[1];
+            return true;
+        }
+    }
+    return false;
+}
+
 size_t TabletSchema::estimate_row_size(size_t variable_len) const {
     size_t size = 0;
     for (const auto& col : _cols) {

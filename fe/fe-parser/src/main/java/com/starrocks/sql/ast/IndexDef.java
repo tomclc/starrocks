@@ -77,7 +77,7 @@ public class IndexDef implements ParseNode {
         }
         sb.append(")");
         if (indexType != null) {
-            sb.append(" USING ").append(indexType);
+            sb.append(" USING ").append(indexType.getDisplayName());
         }
         if (properties != null && properties.size() > 0) {
             sb.append(" (");
@@ -127,7 +127,8 @@ public class IndexDef implements ParseNode {
         BITMAP,
         GIN("GIN"),
         NGRAMBF("NGRAMBF"),
-        VECTOR("VECTOR");
+        VECTOR("VECTOR"),
+        SPATIAL("SPATIAL");
 
         IndexType(String name) {
             this.displayName = name;
@@ -143,7 +144,7 @@ public class IndexDef implements ParseNode {
 
         // Whether the index type is compatible with the new metadata
         public static boolean isCompatibleIndex(IndexType indexType) {
-            return indexType == GIN || indexType == VECTOR;
+            return indexType == GIN || indexType == VECTOR || indexType == SPATIAL;
         }
     }
 }

@@ -41,6 +41,7 @@
 #include "base/string/faststring.h"
 #include "column/binary_column.h"
 #include "column/chunk.h"
+#include "column/fixed_length_column.h"
 #include "column/datum_tuple.h"
 #include "column/nullable_column.h"
 #include "column/schema.h"
@@ -49,6 +50,8 @@
 #include "gen_cpp/segment.pb.h"
 #include "storage/chunk_variant_helper.h"
 #include "storage/index/index_descriptor.h"
+#include "storage/index/spatial/spatial_index_writer.h"
+#include "storage/tablet_index.h"
 #include "storage/row_store_encoder.h"
 #include "storage/rowset/column_writer.h" // ColumnWriter
 #include "storage/rowset/json_column_writer.h"
@@ -273,6 +276,56 @@ Status SegmentWriter::init(const std::vector<uint32_t>& column_indexes, bool has
         _schema_without_full_row_column = std::make_unique<Schema>(_tablet_schema->schema(), cids);
     }
 
+    // Initialize spatial index writer if a SPATIAL index exists in the schema.
+    // Unlike single-column indexes (GIN, VECTOR), the spatial index references two columns
+    // (lng, lat), so it is managed at the segment level rather than the column writer level.
+    if (_tablet_schema->indexes() != nullptr) {
+        for (const auto& index : *_tablet_schema->indexes()) {
+            if (index.index_type() == IndexType::SPATIAL && index.col_unique_ids().size() == 2) {
+                int32_t lng_uid = index.col_unique_ids()[0];
+                int32_t lat_uid = index.col_unique_ids()[1];
+
+                // Map unique IDs to column ordinals in the tablet schema
+                int32_t lng_ordinal = _tablet_schema->field_index(lng_uid);
+                int32_t lat_ordinal = _tablet_schema->field_index(lat_uid);
+                if (lng_ordinal < 0 || lat_ordinal < 0) {
+                    break; // Columns not present in schema; skip spatial index
+                }
+
+                // Find the writer indices for these ordinals in _column_indexes
+                _spatial_lng_writer_index = -1;
+                _spatial_lat_writer_index = -1;
+                for (size_t ci = 0; ci < _column_indexes.size(); ci++) {
+                    if (static_cast<int32_t>(_column_indexes[ci]) == lng_ordinal) {
+                        _spatial_lng_writer_index = static_cast<int32_t>(ci);
+                    }
+                    if (static_cast<int32_t>(_column_indexes[ci]) == lat_ordinal) {
+                        _spatial_lat_writer_index = static_cast<int32_t>(ci);
+                    }
+                }
+
+                if (_spatial_lng_writer_index < 0 || _spatial_lat_writer_index < 0) {
+                    break; // Columns not in this write batch; skip spatial index
+                }
+
+                // Read the S2 cell level from common_properties (default: 16)
+                int cell_level = 16;
+                auto it = index.common_properties().find("s2_cell_level");
+                if (it != index.common_properties().end()) {
+                    cell_level = std::stoi(it->second);
+                }
+
+                _spatial_index_file_path = IndexDescriptor::spatial_index_file_path(
+                        _opts.segment_file_mark.rowset_path_prefix, _opts.segment_file_mark.rowset_id, _segment_id,
+                        index.index_id());
+
+                _spatial_index_writer = std::make_unique<SpatialIndexWriter>(cell_level, _spatial_index_file_path);
+                RETURN_IF_ERROR(_spatial_index_writer->init());
+                break; // Only one spatial index per table
+            }
+        }
+    }
+
     _verify_footer();
 
     return Status::OK();
@@ -344,6 +397,14 @@ Status SegmentWriter::finalize_columns(uint64_t* index_size) {
     }
     _column_writers.clear();
     _column_indexes.clear();
+
+    // Finalize the spatial index (standalone file, not in segment file)
+    if (_spatial_index_writer != nullptr) {
+        uint64_t spatial_index_size = 0;
+        RETURN_IF_ERROR(_spatial_index_writer->finish(&spatial_index_size));
+        *index_size += spatial_index_size;
+        _spatial_index_writer.reset();
+    }
 
     if (_has_key) {
         uint64_t index_offset = _wfile->size();
@@ -427,6 +488,36 @@ Status SegmentWriter::append_chunk(const Chunk& chunk) {
         RETURN_IF_ERROR(_column_writers[chunk_num_columns]->append(*full_row_col));
     } else {
         DCHECK_EQ(_column_writers.size(), chunk_num_columns);
+    }
+
+    // Feed lng/lat data to the spatial index writer if present.
+    // The chunk columns at _spatial_lng_writer_index and _spatial_lat_writer_index
+    // should be DOUBLE columns (possibly nullable).
+    if (_spatial_index_writer != nullptr && chunk_num_rows > 0 &&
+        _spatial_lng_writer_index >= 0 && _spatial_lat_writer_index >= 0 &&
+        static_cast<size_t>(_spatial_lng_writer_index) < chunk_num_columns &&
+        static_cast<size_t>(_spatial_lat_writer_index) < chunk_num_columns) {
+        const Column* lng_col = chunk.get_column_raw_ptr_by_index(_spatial_lng_writer_index);
+        const Column* lat_col = chunk.get_column_raw_ptr_by_index(_spatial_lat_writer_index);
+
+        // Handle NullableColumn: get the underlying data column
+        const DoubleColumn* lng_double = nullptr;
+        const DoubleColumn* lat_double = nullptr;
+        if (lng_col->is_nullable()) {
+            lng_double = down_cast<const DoubleColumn*>(
+                    down_cast<const NullableColumn*>(lng_col)->data_column().get());
+        } else {
+            lng_double = down_cast<const DoubleColumn*>(lng_col);
+        }
+        if (lat_col->is_nullable()) {
+            lat_double = down_cast<const DoubleColumn*>(
+                    down_cast<const NullableColumn*>(lat_col)->data_column().get());
+        } else {
+            lat_double = down_cast<const DoubleColumn*>(lat_col);
+        }
+
+        RETURN_IF_ERROR(_spatial_index_writer->append(lng_double->get_data().data(), lat_double->get_data().data(),
+                                                      chunk_num_rows, _num_rows_written));
     }
 
     if (_has_key) {

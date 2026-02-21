@@ -19,6 +19,7 @@ import com.starrocks.common.FeConstants;
 import com.starrocks.common.InvertedIndexParams;
 import com.starrocks.common.InvertedIndexParams.InvertedIndexImpType;
 import com.starrocks.common.NgramBfIndexParamsKey;
+import com.starrocks.common.SpatialIndexParams;
 import com.starrocks.common.VectorIndexParams;
 import com.starrocks.common.io.ParamsKey;
 import com.starrocks.sql.analyzer.SemanticException;
@@ -102,6 +103,15 @@ public class IndexParams {
                 false, false, "english", null);
         register(builder, IndexType.GIN, IndexParamType.SEARCH, InvertedIndexParams.SearchParamsKey.RERANK, false, false,
                 "false", null);
+
+        /* Spatial Index */
+        // common
+        register(builder, IndexType.SPATIAL, IndexParamType.COMMON, SpatialIndexParams.CommonIndexParamKey.S2_CELL_LEVEL,
+                false, true, "16",
+                "You should set `s2_cell_level` to an integer in [1, 30] for a spatial index.");
+        // index
+        register(builder, IndexType.SPATIAL, IndexParamType.INDEX, SpatialIndexParams.IndexParamsKey.MAX_CELLS_COVERING,
+                false, true, "8", null);
 
         /* NGramFilter */
         // index

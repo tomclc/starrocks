@@ -53,6 +53,8 @@
 
 namespace starrocks {
 
+class SpatialIndexWriter;
+
 class RowBlock;
 class TabletSchema;
 class TabletColumn;
@@ -195,6 +197,14 @@ private:
     uint32_t _num_rows = 0;
 
     DictColumnsValidMap _global_dict_columns_valid_info;
+
+    // Spatial index support (multi-column: lng, lat)
+    std::unique_ptr<SpatialIndexWriter> _spatial_index_writer;
+    std::string _spatial_index_file_path;
+    // Column writer indices for the lng/lat columns referenced by the spatial index.
+    // These are indices into _column_writers, not column ordinals.
+    int32_t _spatial_lng_writer_index = -1;
+    int32_t _spatial_lat_writer_index = -1;
 };
 
 } // namespace starrocks

@@ -604,6 +604,16 @@ struct TVectorSearchOptions {
   11: optional i32 vector_slot_id;
 }
 
+struct TSpatialSearchOptions {
+  1: optional bool enable_spatial_index;
+  2: optional string query_wkt;           // WKT of query region (polygon, circle, bbox)
+  3: optional double center_lng;          // For distance queries
+  4: optional double center_lat;
+  5: optional double radius_meters;       // For distance radius queries
+  6: optional string predicate_type;      // "contains", "distance", "knn"
+  7: optional i64 knn_k;                  // For k-NN queries
+}
+
 enum SampleMethod {
   BY_BLOCK,
   BY_PAGE,
@@ -650,6 +660,7 @@ struct TOlapScanNode {
 
   40: optional TVectorSearchOptions vector_search_options
   41: optional TTableSampleOptions sample_options;
+  42: optional TSpatialSearchOptions spatial_search_options
 
   //back pressure
   50: optional bool enable_topn_filter_back_pressure

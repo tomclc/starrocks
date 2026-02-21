@@ -107,8 +107,12 @@ public class IndexAnalyzer {
             throw new SemanticException("columns of index has duplicated.");
         }
 
-        // right now only support single column index
-        if (indexDef.getColumns().size() != 1) {
+        // SPATIAL index requires exactly 2 columns (lng, lat); all others require 1
+        if (indexDef.getIndexType() == IndexDef.IndexType.SPATIAL) {
+            if (indexDef.getColumns().size() != 2) {
+                throw new SemanticException("SPATIAL index requires exactly 2 columns (longitude, latitude).");
+            }
+        } else if (indexDef.getColumns().size() != 1) {
             throw new SemanticException(indexDef.getIndexName() + " index can only apply to a single column.");
         }
     }
@@ -143,6 +147,8 @@ public class IndexAnalyzer {
             checkNgramBloomFilterIndexValid(column, properties, keysType);
         } else if (indexType == IndexDef.IndexType.VECTOR) {
             checkVectorIndexValid(column, properties, keysType);
+        } else if (indexType == IndexDef.IndexType.SPATIAL) {
+            checkSpatialIndexColumnValid(column, properties, keysType);
         } else {
             throw new SemanticException("Unsupported index type: " + indexType);
         }
@@ -440,6 +446,37 @@ public class IndexAnalyzer {
         analyzeBloomFilterCaseSensitive(properties);
         // prefer add default values here instead of Index::toThrift
         addDefaultBloomFilterProperties(properties);
+    }
+
+    // SpatialIndex methods
+    public static void checkSpatialIndexColumnValid(Column column, Map<String, String> properties, KeysType keysType) {
+        if (keysType != KeysType.DUP_KEYS && keysType != KeysType.PRIMARY_KEYS) {
+            throw new SemanticException("The spatial index can only be built on DUPLICATE/PRIMARY_KEYS table.");
+        }
+        if (!Config.enable_spatial_index) {
+            throw new SemanticException(
+                    "The spatial index is disabled, enable it by setting FE config `enable_spatial_index` to true");
+        }
+        PrimitiveType colType = column.getPrimitiveType();
+        if (colType != PrimitiveType.DOUBLE) {
+            throw new SemanticException(
+                    "The spatial index can only be built on DOUBLE columns. Invalid column: " + column.getName());
+        }
+
+        // Validate properties and add defaults (idempotent, safe to call per-column)
+        if (properties != null) {
+            for (Map.Entry<String, String> entry : properties.entrySet()) {
+                String upperKey = entry.getKey().toUpperCase(Locale.ROOT);
+                IndexParams.getInstance().checkParams(upperKey, entry.getValue());
+            }
+        }
+        addDefaultSpatialProperties(properties != null ? properties : new java.util.HashMap<>());
+    }
+
+    private static void addDefaultSpatialProperties(Map<String, String> properties) {
+        IndexParams.getInstance().getKeySetByIndexTypeWithDefaultValue(IndexDef.IndexType.SPATIAL).entrySet()
+                .stream().filter(entry -> !properties.containsKey(entry.getKey().toLowerCase(Locale.ROOT)))
+                .forEach(entry -> properties.put(entry.getKey().toLowerCase(Locale.ROOT), entry.getValue().getDefaultValue()));
     }
 
     public static void analyseBfWithNgramBf(Table table, Set<Index> newIndexs, Set<ColumnId> bfColumns) throws AnalysisException {

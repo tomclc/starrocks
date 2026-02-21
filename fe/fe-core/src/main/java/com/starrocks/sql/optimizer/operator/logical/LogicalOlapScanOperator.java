@@ -22,6 +22,7 @@ import com.starrocks.catalog.Column;
 import com.starrocks.catalog.OlapTable;
 import com.starrocks.catalog.PartitionNames;
 import com.starrocks.catalog.Table;
+import com.starrocks.common.SpatialSearchOptions;
 import com.starrocks.common.VectorSearchOptions;
 import com.starrocks.sql.ast.TableSampleClause;
 import com.starrocks.sql.optimizer.base.DistributionSpec;
@@ -55,6 +56,8 @@ public final class LogicalOlapScanOperator extends LogicalScanOperator {
     private long gtid = 0;
 
     private VectorSearchOptions vectorSearchOptions = new VectorSearchOptions();
+
+    private SpatialSearchOptions spatialSearchOptions = new SpatialSearchOptions();
 
     // Only for UT
     public LogicalOlapScanOperator(Table table) {
@@ -177,6 +180,14 @@ public final class LogicalOlapScanOperator extends LogicalScanOperator {
         this.vectorSearchOptions = vectorSearchOptions;
     }
 
+    public SpatialSearchOptions getSpatialSearchOptions() {
+        return spatialSearchOptions;
+    }
+
+    public void setSpatialSearchOptions(SpatialSearchOptions spatialSearchOptions) {
+        this.spatialSearchOptions = spatialSearchOptions;
+    }
+
     public TableSampleClause getSample() {
         return sample;
     }
@@ -250,6 +261,7 @@ public final class LogicalOlapScanOperator extends LogicalScanOperator {
             builder.usePkIndex = scanOperator.usePkIndex;
             builder.fromSplitOR = scanOperator.fromSplitOR;
             builder.vectorSearchOptions = scanOperator.vectorSearchOptions;
+            builder.spatialSearchOptions = scanOperator.spatialSearchOptions;
             builder.sample = scanOperator.getSample();
             return this;
         }

@@ -3,6 +3,32 @@
 > This file provides context for AI coding agents working with the StarRocks codebase.
 > Compatible with: Claude Code, OpenCode, Cursor, Gemini CLI, Windsurf, Aider, Continue, Cline, and other MCP-compatible tools.
 
+## CRITICAL: Docker Build Container Rules
+
+**The persistent build container `starrocks-build-danish` MUST stay running for the entire session.**
+
+### NEVER do any of the following:
+- `docker stop starrocks-build-danish`
+- `docker rm starrocks-build-danish`
+- `docker kill starrocks-build-danish`
+- Use `build-in-docker.sh` (it creates throwaway containers with `--rm`, wasting maven cache)
+- Run `docker run --rm` for builds (creates a new container each time, loses cached state)
+
+### ALWAYS use these scripts for building:
+- **FE build:** `./build-fe.sh` (or `./build-fe.sh --clean` for clean build)
+- **BE build:** `./build-be.sh` (or `./build-be.sh --clean` for clean build)
+- **Ensure container is running:** `./ensure-build-container.sh`
+
+These scripts use `docker exec` on the persistent container, preserving maven cache (`/root/.m2`) and all other build state across builds. This avoids re-downloading dependencies every time.
+
+### If you need to run arbitrary commands inside the build container:
+```bash
+docker exec -w /root/starrocks starrocks-build-danish bash -c "your command here"
+```
+
+### Port configuration
+After building, ports are auto-applied from `ports.conf` via `apply_ports.sh`. Read `ports.conf` for the current FE/BE port assignments.
+
 ## Project Overview
 
 StarRocks is a high-performance, real-time analytical database. It delivers sub-second query latency for complex analytics workloads through its MPP (Massively Parallel Processing) architecture.

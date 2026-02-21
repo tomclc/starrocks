@@ -43,6 +43,9 @@
 #include "storage/index/vector/tenann/tenann_index_utils.h"
 #include "storage/index/vector/vector_index_reader.h"
 #include "storage/index/vector/vector_index_reader_factory.h"
+#include "storage/index/spatial/spatial_index_reader.h"
+#include "storage/index/spatial/spatial_index_utils.h"
+#include "storage/index/spatial/spatial_search_option.h"
 #include "storage/index/vector/vector_search_option.h"
 #include "storage/lake/update_manager.h"
 #include "storage/projection_iterator.h"
@@ -284,6 +287,23 @@ private:
         bool always_build_rowid() const { return use_vector_index && !use_ivfpq; }
     };
 
+    // Spatial index related context, only created when needed
+    struct SpatialIndexContext {
+        SpatialIndexContext() = default;
+        ~SpatialIndexContext() = default;
+
+        bool use_spatial_index = false;
+        std::string query_wkt;
+        double center_lng = 0.0;
+        double center_lat = 0.0;
+        double radius_meters = 0.0;
+        std::string predicate_type;
+        int64_t knn_k = 0;
+        int cell_level = 16;
+
+        std::shared_ptr<SpatialIndexReader> reader;
+    };
+
     // Inverted index related context, only created when needed
     struct InvertedIndexContext {
         InvertedIndexContext() = default;
@@ -317,6 +337,8 @@ private:
     StatusOr<SparseRange<>> _get_row_ranges_by_short_key_ranges();
     Status _get_row_ranges_by_zone_map();
     Status _get_row_ranges_by_vector_index();
+    Status _get_row_ranges_by_spatial_index();
+    Status _init_spatial_reader();
     Status _get_row_ranges_by_bloom_filter();
     Status _get_row_ranges_by_rowid_range();
     Status _get_row_ranges_by_row_ids(std::vector<int64_t>* result_ids, SparseRange<>* r);
@@ -519,6 +541,9 @@ private:
 
     // Vector index context - only created when needed
     std::unique_ptr<VectorIndexContext> _vector_index_ctx;
+
+    // Spatial index context - only created when needed
+    std::unique_ptr<SpatialIndexContext> _spatial_index_ctx;
 
     // Inverted index context - only created when needed
     std::unique_ptr<InvertedIndexContext> _inverted_index_ctx;
@@ -781,6 +806,17 @@ SegmentIterator::SegmentIterator(std::shared_ptr<Segment> segment, Schema schema
                 .elem_type = tenann::PrimitiveType::kFloatType};
 #endif
     }
+    // Initialize spatial index context only when needed
+    if (_opts.use_spatial_index && _opts.spatial_search_option) {
+        _spatial_index_ctx = std::make_unique<SpatialIndexContext>();
+        _spatial_index_ctx->use_spatial_index = true;
+        _spatial_index_ctx->query_wkt = _opts.spatial_search_option->query_wkt;
+        _spatial_index_ctx->center_lng = _opts.spatial_search_option->center_lng;
+        _spatial_index_ctx->center_lat = _opts.spatial_search_option->center_lat;
+        _spatial_index_ctx->radius_meters = _opts.spatial_search_option->radius_meters;
+        _spatial_index_ctx->predicate_type = _opts.spatial_search_option->predicate_type;
+        _spatial_index_ctx->knn_k = _opts.spatial_search_option->knn_k;
+    }
     // For small segment file (the number of rows is less than chunk_size),
     // the segment iterator will reserve a large amount of memory,
     // especially when there are many columns, many small files, many versions,
@@ -862,6 +898,7 @@ Status SegmentIterator::_init() {
     RETURN_IF_ERROR(_check_low_cardinality_optimization());
     RETURN_IF_ERROR(_init_column_iterators<true>(_schema));
     RETURN_IF_ERROR(_init_ann_reader());
+    RETURN_IF_ERROR(_init_spatial_reader());
     // filter by index stage
     // Use indexes and predicates to filter some data page
     RETURN_IF_ERROR(_get_row_ranges_by_rowid_range());
@@ -880,6 +917,7 @@ Status SegmentIterator::_init() {
         RETURN_IF_ERROR(_apply_del_vector());
     }
     RETURN_IF_ERROR(_get_row_ranges_by_vector_index());
+    RETURN_IF_ERROR(_get_row_ranges_by_spatial_index());
     RETURN_IF_ERROR(_apply_data_sampling());
 
     // rewrite stage
@@ -1028,6 +1066,93 @@ Status SegmentIterator::_get_row_ranges_by_vector_index() {
 #else
     return Status::OK();
 #endif
+}
+
+Status SegmentIterator::_init_spatial_reader() {
+    if (!_spatial_index_ctx || !_spatial_index_ctx->use_spatial_index) {
+        return Status::OK();
+    }
+
+    // Find SPATIAL indexes in the tablet schema
+    for (const auto& index : *_segment->tablet_schema().indexes()) {
+        if (index.index_type() != IndexType::SPATIAL) {
+            continue;
+        }
+
+        // Read cell level from index properties
+        auto it = index.common_properties().find("s2_cell_level");
+        if (it != index.common_properties().end()) {
+            _spatial_index_ctx->cell_level = std::stoi(it->second);
+        }
+
+        std::string index_path = IndexDescriptor::spatial_index_file_path(
+                _opts.rowset_path, _opts.rowsetid.to_string(), segment_id(), index.index_id());
+
+        auto reader = std::make_shared<SpatialIndexReader>();
+        Status st = reader->load(index_path);
+        if (!st.ok()) {
+            LOG(WARNING) << "Failed to load spatial index: " << st.to_string();
+            _spatial_index_ctx->use_spatial_index = false;
+            return Status::OK();
+        }
+
+        _spatial_index_ctx->reader = std::move(reader);
+        break; // Only one spatial index per table
+    }
+
+    return Status::OK();
+}
+
+Status SegmentIterator::_get_row_ranges_by_spatial_index() {
+    if (!_spatial_index_ctx || !_spatial_index_ctx->use_spatial_index || !_spatial_index_ctx->reader) {
+        return Status::OK();
+    }
+    RETURN_IF(_scan_range.empty(), Status::OK());
+
+    std::vector<uint64_t> covering;
+    int cell_level = _spatial_index_ctx->cell_level;
+
+    if (_spatial_index_ctx->predicate_type == "contains" && !_spatial_index_ctx->query_wkt.empty()) {
+        // Polygon containment query — compute covering from WKT
+        int max_cells = 8; // default
+        covering = SpatialIndexUtils::compute_covering_from_wkt(_spatial_index_ctx->query_wkt, max_cells, cell_level);
+    } else if (_spatial_index_ctx->predicate_type == "distance" && _spatial_index_ctx->radius_meters > 0) {
+        // Distance radius query — compute covering from cap
+        int max_cells = 8;
+        covering = SpatialIndexUtils::compute_covering_from_cap(_spatial_index_ctx->center_lng,
+                                                                 _spatial_index_ctx->center_lat,
+                                                                 _spatial_index_ctx->radius_meters, max_cells,
+                                                                 cell_level);
+    } else {
+        // Unsupported predicate type or missing parameters — skip spatial filtering
+        return Status::OK();
+    }
+
+    if (covering.empty()) {
+        return Status::OK();
+    }
+
+    // Search the spatial index for candidate row IDs
+    roaring::Roaring candidate_bitmap = _spatial_index_ctx->reader->search_with_expansion(covering);
+
+    if (candidate_bitmap.isEmpty()) {
+        _scan_range.clear();
+        return Status::OK();
+    }
+
+    // Convert roaring bitmap to SparseRange
+    SparseRange<> candidate_range;
+    for (auto it = candidate_bitmap.begin(); it != candidate_bitmap.end(); ++it) {
+        rowid_t row_id = *it;
+        candidate_range.add(Range<>(row_id, row_id + 1));
+    }
+
+    // Intersect with current scan range
+    size_t prev_size = _scan_range.span_size();
+    _scan_range = _scan_range.intersection(candidate_range);
+    _opts.stats->rows_spatial_index_filtered += (prev_size - _scan_range.span_size());
+
+    return Status::OK();
 }
 
 Status SegmentIterator::_get_row_ranges_by_row_ids(std::vector<int64_t>* result_ids, SparseRange<>* r) {

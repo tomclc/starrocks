@@ -44,6 +44,8 @@ struct RowidRangeOption;
 struct ShortKeyRangesOption;
 struct VectorSearchOption;
 using VectorSearchOptionPtr = std::shared_ptr<VectorSearchOption>;
+struct SpatialSearchOption;
+using SpatialSearchOptionPtr = std::shared_ptr<SpatialSearchOption>;
 
 class RowsetReadOptions {
     using RowidRangeOptionPtr = std::shared_ptr<RowidRangeOption>;
@@ -96,6 +98,10 @@ public:
     bool use_vector_index = false;
 
     VectorSearchOptionPtr vector_search_option = nullptr;
+
+    bool use_spatial_index = false;
+
+    SpatialSearchOptionPtr spatial_search_option = nullptr;
 
     TTableSampleOptions sample_options;
     bool enable_join_runtime_filter_pushdown = false;

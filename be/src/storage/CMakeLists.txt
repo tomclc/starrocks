@@ -290,6 +290,9 @@ set(STORAGE_FILES
     index/vector/tenann/del_id_filter.cpp
     index/vector/tenann/tenann_index_builder.cpp
     index/vector/tenann/tenann_index_utils.cpp
+    index/spatial/spatial_index_writer.cpp
+    index/spatial/spatial_index_reader.cpp
+    index/spatial/spatial_index_utils.cpp
     lake/table_schema_service.cpp
     index/inverted/builtin/builtin_plugin.cpp
     index/inverted/builtin/builtin_inverted_writer.cpp

@@ -3112,6 +3112,9 @@ public class Config extends ConfigBase {
     public static boolean enable_experimental_vector = false;
 
     @ConfField(mutable = true)
+    public static boolean enable_spatial_index = false;
+
+    @ConfField(mutable = true)
     public static boolean enable_experimental_mv = true;
 
     /**

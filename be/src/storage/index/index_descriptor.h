@@ -34,6 +34,8 @@ public:
             return vector_index_file_path(rowset_dir, rowset_id, segment_id, index_id);
         case GIN:
             return inverted_index_file_path(rowset_dir, rowset_id, segment_id, index_id);
+        case SPATIAL:
+            return spatial_index_file_path(rowset_dir, rowset_id, segment_id, index_id);
         default:
             return Status::NotSupported("Not supported");
         }
@@ -50,6 +52,12 @@ public:
                                               int segment_id, int64_t index_id) {
         // {rowset_dir}/{schema_hash}/{rowset_id}_{seg_num}_{index_id}.vi
         return fmt::format("{}/{}_{}_{}.{}", rowset_dir, rowset_id, segment_id, index_id, "vi");
+    }
+
+    static std::string spatial_index_file_path(const std::string& rowset_dir, const std::string& rowset_id,
+                                               int segment_id, int64_t index_id) {
+        // {rowset_dir}/{rowset_id}_{segment_id}_{index_id}.si
+        return fmt::format("{}/{}_{}_{}.{}", rowset_dir, rowset_id, segment_id, index_id, "si");
     }
 
     static const std::string get_temporary_null_bitmap_file_name() { return "null_bitmap"; }

@@ -667,7 +667,10 @@ Status TabletSchema::get_indexes_for_column(int32_t col_unique_id,
                 res->emplace(index.index_type(), index);
             }
         } else if (index.col_unique_ids().size() > 1) {
-            // TODO: implement multi-column index
+            // Spatial indexes are multi-column (lng, lat) and handled separately
+            if (index.index_type() == IndexType::SPATIAL) {
+                continue;
+            }
             return Status::NotSupported("Multi-column index is not supported for now. ");
         }
     }

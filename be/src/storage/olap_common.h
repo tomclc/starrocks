@@ -261,6 +261,7 @@ struct OlapReaderStatistics {
     int64_t rows_key_range_num = 0;
     int64_t rows_stats_filtered = 0;
     int64_t rows_vector_index_filtered = 0;
+    int64_t rows_spatial_index_filtered = 0;
     int64_t rows_bf_filtered = 0;
     int64_t rows_del_filtered = 0;
     int64_t del_filter_ns = 0;

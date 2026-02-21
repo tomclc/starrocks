@@ -41,6 +41,8 @@ using ShortKeyRangesOptionPtr = std::shared_ptr<ShortKeyRangesOption>;
 struct OlapScanRange;
 struct VectorSearchOption;
 using VectorSearchOptionPtr = std::shared_ptr<VectorSearchOption>;
+struct SpatialSearchOption;
+using SpatialSearchOptionPtr = std::shared_ptr<SpatialSearchOption>;
 
 static inline std::unordered_set<uint32_t> EMPTY_FILTERED_COLUMN_IDS;
 // Params for TabletReader
@@ -104,6 +106,10 @@ struct TabletReaderParams {
     bool use_vector_index = false;
 
     VectorSearchOptionPtr vector_search_option = nullptr;
+
+    bool use_spatial_index = false;
+
+    SpatialSearchOptionPtr spatial_search_option = nullptr;
 
     TTableSampleOptions sample_options;
     bool enable_join_runtime_filter_pushdown = false;

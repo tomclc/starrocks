@@ -44,6 +44,7 @@
 #include "runtime/exec_env.h"
 #include "storage/chunk_helper.h"
 #include "storage/column_predicate_rewriter.h"
+#include "storage/index/spatial/spatial_search_option.h"
 #include "storage/index/vector/vector_search_option.h"
 #include "storage/metadata_util.h"
 #include "storage/predicate_parser.h"
@@ -94,6 +95,21 @@ Status OlapChunkSource::prepare(RuntimeState* state) {
         _vector_distance_column_name = vector_search_options.vector_distance_column_name;
         _vector_slot_id = vector_search_options.vector_slot_id;
         _params.vector_search_option = std::make_shared<VectorSearchOption>();
+    }
+    _use_spatial_index = thrift_olap_scan_node.__isset.spatial_search_options &&
+                         thrift_olap_scan_node.spatial_search_options.enable_spatial_index;
+    if (_use_spatial_index) {
+        auto spatial_opt = std::make_shared<SpatialSearchOption>();
+        const auto& spatial_opts = thrift_olap_scan_node.spatial_search_options;
+        spatial_opt->enable_spatial_index = true;
+        spatial_opt->query_wkt = spatial_opts.query_wkt;
+        spatial_opt->center_lng = spatial_opts.center_lng;
+        spatial_opt->center_lat = spatial_opts.center_lat;
+        spatial_opt->radius_meters = spatial_opts.radius_meters;
+        spatial_opt->predicate_type = spatial_opts.predicate_type;
+        spatial_opt->knn_k = spatial_opts.knn_k;
+        _params.spatial_search_option = spatial_opt;
+        _params.use_spatial_index = true;
     }
     const TupleDescriptor* tuple_desc = state->desc_tbl().get_tuple_descriptor(thrift_olap_scan_node.tuple_id);
     _slots = &tuple_desc->slots();

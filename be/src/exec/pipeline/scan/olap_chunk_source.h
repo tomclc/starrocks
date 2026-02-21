@@ -113,6 +113,8 @@ private:
     std::string _vector_distance_column_name;
     SlotId _vector_slot_id;
 
+    bool _use_spatial_index = false;
+
     std::shared_ptr<starrocks::TableMetrics> _table_metrics;
 
     // The following are profile meatures

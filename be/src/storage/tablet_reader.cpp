@@ -290,6 +290,8 @@ Status TabletReader::_init_collector_for_pk_index_read() {
     rs_opts.is_primary_keys = false;
     rs_opts.use_vector_index = _reader_params->use_vector_index;
     rs_opts.vector_search_option = _reader_params->vector_search_option;
+    rs_opts.use_spatial_index = _reader_params->use_spatial_index;
+    rs_opts.spatial_search_option = _reader_params->spatial_search_option;
     rs_opts.enable_join_runtime_filter_pushdown = _reader_params->enable_join_runtime_filter_pushdown;
 
     rs_opts.rowid_range_option = std::make_shared<RowidRangeOption>();
@@ -366,6 +368,8 @@ Status TabletReader::get_segment_iterators(const TabletReaderParams& params, std
     rs_opts.column_access_paths = params.column_access_paths;
     rs_opts.use_vector_index = params.use_vector_index;
     rs_opts.vector_search_option = params.vector_search_option;
+    rs_opts.use_spatial_index = params.use_spatial_index;
+    rs_opts.spatial_search_option = params.spatial_search_option;
     rs_opts.sample_options = params.sample_options;
     rs_opts.enable_join_runtime_filter_pushdown = params.enable_join_runtime_filter_pushdown;
     rs_opts.enable_predicate_col_late_materialize = params.enable_predicate_col_late_materialize;

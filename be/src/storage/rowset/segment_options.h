@@ -41,9 +41,11 @@ class Status;
 struct OlapReaderStatistics;
 struct ShortKeyRangeOption;
 struct VectorSearchOption;
+struct SpatialSearchOption;
 
 using ShortKeyRangeOptionPtr = std::shared_ptr<ShortKeyRangeOption>;
 using VectorSearchOptionPtr = std::shared_ptr<VectorSearchOption>;
+using SpatialSearchOptionPtr = std::shared_ptr<SpatialSearchOption>;
 
 class SegmentReadOptions {
 public:
@@ -112,6 +114,10 @@ public:
     bool use_vector_index = false;
 
     VectorSearchOptionPtr vector_search_option = nullptr;
+
+    bool use_spatial_index = false;
+
+    SpatialSearchOptionPtr spatial_search_option = nullptr;
 
     // Data sampling by block-level, which is a core-component of TABLE-SAMPLE feature
     // 1. Regular block smapling: Bernoulli sampling on page-id

@@ -293,8 +293,10 @@ public class RewriteToSpatialPlanRule extends TransformationRule {
             java.util.regex.Pattern coordPattern = java.util.regex.Pattern.compile(
                     "(-?[\\d.]+)\\s+(-?[\\d.]+)");
             Matcher matcher = coordPattern.matcher(wkt);
-            double minLng = Double.MAX_VALUE, maxLng = -Double.MAX_VALUE;
-            double minLat = Double.MAX_VALUE, maxLat = -Double.MAX_VALUE;
+            double minLng = Double.MAX_VALUE;
+            double maxLng = -Double.MAX_VALUE;
+            double minLat = Double.MAX_VALUE;
+            double maxLat = -Double.MAX_VALUE;
             boolean found = false;
             while (matcher.find()) {
                 double lng = Double.parseDouble(matcher.group(1));
@@ -313,7 +315,7 @@ public class RewriteToSpatialPlanRule extends TransformationRule {
             maxLng = Math.min(maxLng, 180.0);
             minLat = Math.max(minLat, -90.0);
             maxLat = Math.min(maxLat, 90.0);
-            return new double[]{minLng, maxLng, minLat, maxLat};
+            return new double[] {minLng, maxLng, minLat, maxLat};
         } catch (Exception e) {
             return null;
         }
@@ -339,6 +341,6 @@ public class RewriteToSpatialPlanRule extends TransformationRule {
         double minLat = Math.max(centerLat - dLat, -90.0);
         double maxLat = Math.min(centerLat + dLat, 90.0);
 
-        return new double[]{minLng, maxLng, minLat, maxLat};
+        return new double[] {minLng, maxLng, minLat, maxLat};
     }
 }

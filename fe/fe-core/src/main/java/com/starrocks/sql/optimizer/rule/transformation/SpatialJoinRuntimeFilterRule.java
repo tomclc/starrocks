@@ -31,9 +31,10 @@ import com.starrocks.sql.optimizer.operator.scalar.ColumnRefOperator;
 import com.starrocks.sql.optimizer.operator.scalar.ScalarOperator;
 import com.starrocks.sql.optimizer.rule.RuleType;
 
+import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 /**
  * Detects spatial join patterns like:
@@ -118,14 +119,14 @@ public class SpatialJoinRuntimeFilterRule extends TransformationRule {
         }
 
         // The point args should reference columns (probe-side)
-        Set<ColumnRefOperator> pointCols = pointExpr.getColumnRefs();
+        List<ColumnRefOperator> pointCols = pointExpr.getColumnRefs();
         if (pointCols.isEmpty()) {
             return false;
         }
 
         // The polygon expr should reference columns from the build side (not constants—those
         // are already handled by the scan-level RewriteToSpatialPlanRule)
-        Set<ColumnRefOperator> polygonCols = polygonExpr.getColumnRefs();
+        List<ColumnRefOperator> polygonCols = polygonExpr.getColumnRefs();
         if (polygonCols.isEmpty()) {
             // If polygon is a constant, the scan-level rule already handles it
             return false;
@@ -167,7 +168,8 @@ public class SpatialJoinRuntimeFilterRule extends TransformationRule {
      * Find a LogicalOlapScanOperator in the expression tree that has a spatial index
      * and whose columns include the given column refs.
      */
-    private LogicalOlapScanOperator findSpatialIndexedScan(OptExpression expr, Set<ColumnRefOperator> cols) {
+    private LogicalOlapScanOperator findSpatialIndexedScan(
+            OptExpression expr, Collection<ColumnRefOperator> cols) {
         if (expr.getOp() instanceof LogicalOlapScanOperator) {
             LogicalOlapScanOperator scan = (LogicalOlapScanOperator) expr.getOp();
             OlapTable table = (OlapTable) scan.getTable();
@@ -175,9 +177,8 @@ public class SpatialJoinRuntimeFilterRule extends TransformationRule {
                     .anyMatch(idx -> idx.getIndexType() == IndexDef.IndexType.SPATIAL);
             if (hasSpatialIndex) {
                 // Check if the scan's columns include the referenced columns
-                Set<ColumnRefOperator> scanCols = scan.getColumnMetaToColRefMap().values()
-                        .stream().collect(java.util.stream.Collectors.toSet());
-                if (scanCols.containsAll(cols)) {
+                Collection<ColumnRefOperator> scanCols = scan.getColumnMetaToColRefMap().values();
+                if (new HashSet<>(scanCols).containsAll(cols)) {
                     return scan;
                 }
             }

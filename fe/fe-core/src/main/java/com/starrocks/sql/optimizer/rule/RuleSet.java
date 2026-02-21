@@ -161,9 +161,9 @@ import com.starrocks.sql.optimizer.rule.transformation.RewriteSimpleAggToMetaSca
 import com.starrocks.sql.optimizer.rule.transformation.RewriteSumByAssociativeRule;
 import com.starrocks.sql.optimizer.rule.transformation.RewriteToSpatialPlanRule;
 import com.starrocks.sql.optimizer.rule.transformation.RewriteToVectorPlanRule;
-import com.starrocks.sql.optimizer.rule.transformation.SpatialJoinRuntimeFilterRule;
 import com.starrocks.sql.optimizer.rule.transformation.ScalarApply2AnalyticRule;
 import com.starrocks.sql.optimizer.rule.transformation.ScalarApply2JoinRule;
+import com.starrocks.sql.optimizer.rule.transformation.SpatialJoinRuntimeFilterRule;
 import com.starrocks.sql.optimizer.rule.transformation.SplitLimitRule;
 import com.starrocks.sql.optimizer.rule.transformation.SplitMultiPhaseAggRule;
 import com.starrocks.sql.optimizer.rule.transformation.SplitTopNRule;

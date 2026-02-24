@@ -45,6 +45,7 @@
 #ifndef __APPLE__
 #include "storage/index/inverted/inverted_plugin_factory.h"
 #endif
+#include "storage/index/s2/s2_index_writer.h"
 #include "base/bit/rle_encoding.h"
 #include "base/string/faststring.h"
 #include "storage/rowset/array_column_writer.h"
@@ -443,6 +444,8 @@ Status ScalarColumnWriter::init() {
         }
     }
 #endif
+    // NOTE: S2 index writing is handled at segment level in SegmentWriter
+    // to support both 1-column (WKT) and 2-column (lat, lng) modes.
     return Status::OK();
 }
 
@@ -583,6 +586,11 @@ Status ScalarColumnWriter::write_inverted_index() {
     return Status::OK();
 }
 
+Status ScalarColumnWriter::write_s2_index(uint64_t* index_size) {
+    // S2 index is written at segment level in SegmentWriter::finalize_columns()
+    return Status::OK();
+}
+
 // write a data page into file and update ordinal index
 Status ScalarColumnWriter::_write_data_page(Page* page) {
     PagePointer pp;
@@ -690,6 +698,8 @@ Status ScalarColumnWriter::finish_current_page() {
 
 Status ScalarColumnWriter::append(const Column& column) {
     _total_mem_footprint += column.byte_size();
+    // NOTE: S2 index appending is handled at chunk level in SegmentWriter::append_chunk()
+    // to support both 1-column (WKT) and 2-column (lat, lng) modes.
     const uint8_t* ptr = column.raw_data();
     const uint8_t* null =
             is_nullable() ? down_cast<const NullableColumn*>(&column)->null_column()->raw_data() : nullptr;

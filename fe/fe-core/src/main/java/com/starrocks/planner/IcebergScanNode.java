@@ -17,6 +17,7 @@ package com.starrocks.planner;
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Preconditions;
 import com.starrocks.catalog.IcebergTable;
+import com.starrocks.common.S2SearchOptions;
 import com.starrocks.common.StarRocksException;
 import com.starrocks.connector.BucketProperty;
 import com.starrocks.connector.ConnectorMetadatRequestContext;
@@ -74,6 +75,7 @@ public class IcebergScanNode extends ScanNode {
     private PartitionIdGenerator partitionIdGenerator = null;
     private IcebergMetricsReporter icebergScanMetricsReporter;
     private boolean usedForDelete = false;
+    private S2SearchOptions s2SearchOptions = null;
 
     public IcebergScanNode(PlanNodeId id, TupleDescriptor desc, String planNodeName,
                            IcebergTableMORParams tableFullMORParams, IcebergMORParams morParams,
@@ -221,6 +223,10 @@ public class IcebergScanNode extends ScanNode {
 
     public void setUsedForDelete(boolean usedForDelete) {
         this.usedForDelete = usedForDelete;
+    }
+
+    public void setS2SearchOptions(S2SearchOptions s2SearchOptions) {
+        this.s2SearchOptions = s2SearchOptions;
     }
 
     public boolean isUsedForDelete() {
@@ -403,6 +409,10 @@ public class IcebergScanNode extends ScanNode {
         HdfsScanNode.setMinMaxConjunctsToThrift(tHdfsScanNode, this, this.getScanNodePredicates());
         HdfsScanNode.setDataCacheOptionsToThrift(tHdfsScanNode, dataCacheOptions);
         bucketProperties.ifPresent(properties -> HdfsScanNode.setBucketProperties(tHdfsScanNode, properties));
+
+        if (s2SearchOptions != null && s2SearchOptions.isEnableS2Index()) {
+            tHdfsScanNode.setS2_search_options(s2SearchOptions.toThrift());
+        }
     }
 
     @Override

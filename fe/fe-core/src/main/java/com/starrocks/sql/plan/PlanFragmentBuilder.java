@@ -949,6 +949,7 @@ public class PlanFragmentBuilder {
             scanNode.setWithoutColocateRequirement(node.isWithoutColocateRequirement());
             scanNode.setGtid(node.getGtid());
             scanNode.setVectorSearchOptions(node.getVectorSearchOptions());
+            scanNode.setS2SearchOptions(node.getS2SearchOptions());
             scanNode.setSample(node.getSample());
             currentExecGroup.add(scanNode);
             // set tablet
@@ -1599,6 +1600,12 @@ public class PlanFragmentBuilder {
 
             icebergScanNode.setScanOptimizeOption(node.getScanOptimizeOption());
             icebergScanNode.computeStatistics(expression.getStatistics());
+            if (!isEqDeleteScan) {
+                PhysicalIcebergScanOperator icebergOp = node.cast();
+                if (icebergOp.getS2SearchOptions() != null) {
+                    icebergScanNode.setS2SearchOptions(icebergOp.getS2SearchOptions());
+                }
+            }
             currentExecGroup.add(icebergScanNode, true);
             try {
                 // set predicate

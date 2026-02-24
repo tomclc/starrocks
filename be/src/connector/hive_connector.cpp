@@ -463,6 +463,21 @@ void HiveDataSource::_init_tuples_and_slots(RuntimeState* state) {
     if (!_scan_range.delete_files.empty()) {
         _use_min_max_opt = false;
     }
+
+    // S2 spatial index options
+    if (hdfs_scan_node.__isset.s2_search_options &&
+        hdfs_scan_node.s2_search_options.__isset.enable_s2_index &&
+        hdfs_scan_node.s2_search_options.enable_s2_index) {
+        const auto& s2_opts = hdfs_scan_node.s2_search_options;
+        _use_s2_index = true;
+        if (hdfs_scan_node.__isset.s2_index_id) _s2_index_id = hdfs_scan_node.s2_index_id;
+        if (s2_opts.__isset.query_type) _s2_query_type = s2_opts.query_type;
+        if (s2_opts.__isset.query_lat) _s2_query_lat = s2_opts.query_lat;
+        if (s2_opts.__isset.query_lng) _s2_query_lng = s2_opts.query_lng;
+        if (s2_opts.__isset.query_radius_meters) _s2_query_radius_meters = s2_opts.query_radius_meters;
+        if (s2_opts.__isset.cell_level) _s2_cell_level = s2_opts.cell_level;
+        if (s2_opts.__isset.max_cells) _s2_max_cells = s2_opts.max_cells;
+    }
 }
 
 Status HiveDataSource::_decompose_conjunct_ctxs(RuntimeState* state) {
@@ -797,6 +812,16 @@ Status HiveDataSource::_init_scanner(RuntimeState* state) {
     scanner_params.use_min_max_opt = _use_min_max_opt;
     scanner_params.use_count_opt = _use_count_opt;
     scanner_params.all_conjunct_ctxs = _all_conjunct_ctxs;
+
+    // S2 spatial index
+    scanner_params.use_s2_index = _use_s2_index;
+    scanner_params.s2_index_id = _s2_index_id;
+    scanner_params.s2_cell_level = _s2_cell_level;
+    scanner_params.s2_max_cells = _s2_max_cells;
+    scanner_params.s2_query_type = _s2_query_type;
+    scanner_params.s2_query_lat = _s2_query_lat;
+    scanner_params.s2_query_lng = _s2_query_lng;
+    scanner_params.s2_query_radius_meters = _s2_query_radius_meters;
 
     HdfsScanner* scanner = nullptr;
     auto format = scan_range.file_format;

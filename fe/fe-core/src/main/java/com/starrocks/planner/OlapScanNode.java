@@ -200,6 +200,7 @@ public class OlapScanNode extends AbstractOlapTableScanNode {
 
     private VectorSearchOptions vectorSearchOptions = new VectorSearchOptions();
 
+    private com.starrocks.common.S2SearchOptions s2SearchOptions = null;
 
     // Set to true after it's confirmed at some point during the execution of this request that there is some living CN.
     // Set just once per query.
@@ -226,6 +227,10 @@ public class OlapScanNode extends AbstractOlapTableScanNode {
 
     public void setVectorSearchOptions(VectorSearchOptions vectorSearchOptions) {
         this.vectorSearchOptions = vectorSearchOptions;
+    }
+
+    public void setS2SearchOptions(com.starrocks.common.S2SearchOptions s2SearchOptions) {
+        this.s2SearchOptions = s2SearchOptions;
     }
 
     public void setIsPreAggregation(boolean isPreAggregation, String reason) {
@@ -1176,6 +1181,10 @@ public class OlapScanNode extends AbstractOlapTableScanNode {
 
             if (vectorSearchOptions != null && vectorSearchOptions.isEnableUseANN()) {
                 msg.olap_scan_node.setVector_search_options(vectorSearchOptions.toThrift());
+            }
+
+            if (s2SearchOptions != null && s2SearchOptions.isEnableS2Index()) {
+                msg.olap_scan_node.setS2_search_options(s2SearchOptions.toThrift());
             }
 
             msg.olap_scan_node.setUse_pk_index(usePkIndex);

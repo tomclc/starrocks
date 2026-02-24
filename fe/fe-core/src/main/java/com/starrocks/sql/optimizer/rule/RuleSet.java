@@ -159,6 +159,8 @@ import com.starrocks.sql.optimizer.rule.transformation.RewriteHllCountDistinctRu
 import com.starrocks.sql.optimizer.rule.transformation.RewriteSimpleAggToHDFSScanRule;
 import com.starrocks.sql.optimizer.rule.transformation.RewriteSimpleAggToMetaScanRule;
 import com.starrocks.sql.optimizer.rule.transformation.RewriteSumByAssociativeRule;
+import com.starrocks.sql.optimizer.rule.transformation.RewriteToS2PlanRule;
+import com.starrocks.sql.optimizer.rule.transformation.RewriteToS2PlanRuleForIceberg;
 import com.starrocks.sql.optimizer.rule.transformation.RewriteToVectorPlanRule;
 import com.starrocks.sql.optimizer.rule.transformation.ScalarApply2AnalyticRule;
 import com.starrocks.sql.optimizer.rule.transformation.ScalarApply2JoinRule;
@@ -249,6 +251,11 @@ public class RuleSet {
 
     public static final Rule VECTOR_REWRITE_RULES = new CombinationRule(RuleType.GP_VECTOR_REWRITE, ImmutableList.of(
             new RewriteToVectorPlanRule()
+    ));
+
+    public static final Rule S2_REWRITE_RULES = new CombinationRule(RuleType.GP_S2_REWRITE, ImmutableList.of(
+            new RewriteToS2PlanRule(),
+            new RewriteToS2PlanRuleForIceberg()
     ));
 
     public static final Rule PRUNE_COLUMNS_RULES = new CombinationRule(RuleType.GP_PRUNE_COLUMNS, ImmutableList.of(

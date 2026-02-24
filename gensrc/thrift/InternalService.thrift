@@ -641,3 +641,19 @@ struct TGetFileSchemaRequest {
   1: required PlanNodes.TScanRange scan_range
   2: optional i32 volume_id = -1
 }
+
+// S2 spatial index build request for external tables (Iceberg)
+struct TBuildS2IndexRequest {
+  1: optional string data_file_path
+  2: optional i64 index_id
+  3: optional string lng_column_name
+  4: optional string lat_column_name
+  5: optional i32 cell_level
+  6: optional string index_output_path
+  7: optional map<string, string> cloud_configuration
+}
+
+struct TBuildS2IndexResult {
+  1: optional Status.TStatus status
+  2: optional i64 rows_indexed
+}

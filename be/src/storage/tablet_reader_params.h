@@ -105,6 +105,14 @@ struct TabletReaderParams {
 
     VectorSearchOptionPtr vector_search_option = nullptr;
 
+    bool use_s2_index = false;
+    std::string s2_query_type;
+    double s2_query_lat = 0;
+    double s2_query_lng = 0;
+    double s2_query_radius_meters = 0;
+    int32_t s2_cell_level = 15;
+    int32_t s2_max_cells = 8;
+
     TTableSampleOptions sample_options;
     bool enable_join_runtime_filter_pushdown = false;
     bool enable_predicate_col_late_materialize = false;

@@ -63,6 +63,7 @@ import com.starrocks.catalog.Column;
 import com.starrocks.catalog.Database;
 import com.starrocks.catalog.DictionaryMgr;
 import com.starrocks.catalog.DomainResolver;
+import com.starrocks.catalog.ExternalTableIndexManager;
 import com.starrocks.catalog.Function;
 import com.starrocks.catalog.FunctionSet;
 import com.starrocks.catalog.GlobalFunctionMgr;
@@ -547,6 +548,12 @@ public class GlobalStateMgr {
     private JwkMgr jwkMgr;
 
     private final TabletReshardJobMgr tabletReshardJobMgr;
+
+    private final ExternalTableIndexManager externalTableIndexManager = new ExternalTableIndexManager();
+
+    public ExternalTableIndexManager getExternalTableIndexManager() {
+        return externalTableIndexManager;
+    }
 
     public NodeMgr getNodeMgr() {
         return nodeMgr;

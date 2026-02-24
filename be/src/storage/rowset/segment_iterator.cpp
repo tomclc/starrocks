@@ -41,6 +41,9 @@
 #include "storage/index/index_descriptor.h"
 #include "storage/index/vector/tenann/del_id_filter.h"
 #include "storage/index/vector/tenann/tenann_index_utils.h"
+#include "storage/index/s2/s2_index_reader.h"
+#include "storage/index/s2/s2_index_utils.h"
+#include "storage/index/s2/s2_search_context.h"
 #include "storage/index/vector/vector_index_reader.h"
 #include "storage/index/vector/vector_index_reader_factory.h"
 #include "storage/index/vector/vector_search_option.h"
@@ -317,6 +320,8 @@ private:
     StatusOr<SparseRange<>> _get_row_ranges_by_short_key_ranges();
     Status _get_row_ranges_by_zone_map();
     Status _get_row_ranges_by_vector_index();
+    Status _init_s2_reader();
+    Status _get_row_ranges_by_s2_index();
     Status _get_row_ranges_by_bloom_filter();
     Status _get_row_ranges_by_rowid_range();
     Status _get_row_ranges_by_row_ids(std::vector<int64_t>* result_ids, SparseRange<>* r);
@@ -519,6 +524,9 @@ private:
 
     // Vector index context - only created when needed
     std::unique_ptr<VectorIndexContext> _vector_index_ctx;
+
+    // S2 spatial index context - only created when needed
+    std::unique_ptr<S2SearchContext> _s2_index_ctx;
 
     // Inverted index context - only created when needed
     std::unique_ptr<InvertedIndexContext> _inverted_index_ctx;
@@ -862,6 +870,7 @@ Status SegmentIterator::_init() {
     RETURN_IF_ERROR(_check_low_cardinality_optimization());
     RETURN_IF_ERROR(_init_column_iterators<true>(_schema));
     RETURN_IF_ERROR(_init_ann_reader());
+    RETURN_IF_ERROR(_init_s2_reader());
     // filter by index stage
     // Use indexes and predicates to filter some data page
     RETURN_IF_ERROR(_get_row_ranges_by_rowid_range());
@@ -880,6 +889,7 @@ Status SegmentIterator::_init() {
         RETURN_IF_ERROR(_apply_del_vector());
     }
     RETURN_IF_ERROR(_get_row_ranges_by_vector_index());
+    RETURN_IF_ERROR(_get_row_ranges_by_s2_index());
     RETURN_IF_ERROR(_apply_data_sampling());
 
     // rewrite stage
@@ -1028,6 +1038,97 @@ Status SegmentIterator::_get_row_ranges_by_vector_index() {
 #else
     return Status::OK();
 #endif
+}
+
+Status SegmentIterator::_init_s2_reader() {
+    if (!_opts.use_s2_index) {
+        return Status::OK();
+    }
+
+    // Find S2 index in schema
+    for (const auto& index : *_segment->tablet_schema().indexes()) {
+        if (index.index_type() == IndexType::S2) {
+            std::string index_path = IndexDescriptor::s2_index_file_path(
+                    _opts.rowset_path, _opts.rowsetid.to_string(), segment_id(), index.index_id());
+
+            _s2_index_ctx = std::make_unique<S2SearchContext>();
+            _s2_index_ctx->use_s2_index = true;
+            _s2_index_ctx->cell_level = _opts.s2_cell_level;
+            _s2_index_ctx->max_cells = _opts.s2_max_cells;
+
+            // Use pre-computed cell ranges when available (cached across segments),
+            // otherwise compute them per-segment as fallback.
+            if (_opts.s2_precomputed_cell_ranges && !_opts.s2_precomputed_cell_ranges->empty()) {
+                _s2_index_ctx->query_cell_ranges = *_opts.s2_precomputed_cell_ranges;
+            } else if (_opts.s2_query_type == "circle") {
+                RETURN_IF_ERROR(compute_cell_ranges_for_cap(
+                        _opts.s2_query_lat, _opts.s2_query_lng, _opts.s2_query_radius_meters,
+                        _opts.s2_cell_level, _opts.s2_max_cells,
+                        &_s2_index_ctx->query_cell_ranges));
+            } else if (_opts.s2_query_type == "point") {
+                RETURN_IF_ERROR(compute_cell_ranges_for_point(
+                        _opts.s2_query_lat, _opts.s2_query_lng, _opts.s2_cell_level,
+                        &_s2_index_ctx->query_cell_ranges));
+            }
+
+            // If no ranges were computed (unsupported query type or region too large),
+            // disable S2 pruning and let the full scan + filter handle it.
+            if (_s2_index_ctx->query_cell_ranges.empty()) {
+                _s2_index_ctx->use_s2_index = false;
+                return Status::OK();
+            }
+
+            // Open the index reader.
+            // The index file may not exist for segments produced by compaction
+            // (e.g. vertical compaction where lat/lng columns are in a
+            // different column batch). In that case, disable S2 pruning for
+            // this segment and let the full scan + predicate handle it.
+            ASSIGN_OR_RETURN(auto s2_fs, FileSystem::CreateSharedFromString(index_path));
+            auto exist_st = s2_fs->path_exists(index_path);
+            if (exist_st.is_not_found()) {
+                _s2_index_ctx->use_s2_index = false;
+                return Status::OK();
+            }
+            RETURN_IF_ERROR(exist_st);
+            std::shared_ptr<S2IndexReader> reader;
+            RETURN_IF_ERROR(S2IndexReader::open(index_path, &reader));
+            _s2_index_ctx->reader = std::move(reader);
+            break;
+        }
+    }
+
+    return Status::OK();
+}
+
+Status SegmentIterator::_get_row_ranges_by_s2_index() {
+    if (!_s2_index_ctx || !_s2_index_ctx->use_s2_index || _s2_index_ctx->reader->is_empty()) {
+        return Status::OK();
+    }
+    RETURN_IF(_scan_range.empty(), Status::OK());
+
+    roaring::Roaring row_bitmap;
+    RETURN_IF_ERROR(_s2_index_ctx->reader->get_row_ranges(
+            _s2_index_ctx->query_cell_ranges, &row_bitmap));
+
+    // Convert roaring bitmap to SparseRange, coalescing contiguous row IDs
+    SparseRange<> s2_range;
+    auto it = row_bitmap.begin();
+    while (it != row_bitmap.end()) {
+        uint32_t start = *it;
+        uint32_t end = start + 1;
+        ++it;
+        while (it != row_bitmap.end() && *it == end) {
+            ++end;
+            ++it;
+        }
+        s2_range.add(Range<>(start, end));
+    }
+
+    size_t prev_size = _scan_range.span_size();
+    _scan_range = _scan_range.intersection(s2_range);
+    _opts.stats->rows_bf_filtered += (prev_size - _scan_range.span_size()); // reuse bloom filter stat for now
+
+    return Status::OK();
 }
 
 Status SegmentIterator::_get_row_ranges_by_row_ids(std::vector<int64_t>* result_ids, SparseRange<>* r) {

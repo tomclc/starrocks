@@ -774,6 +774,14 @@ Status Rowset::get_segment_iterators(const Schema& schema, const RowsetReadOptio
     seg_options.tablet_schema = options.tablet_schema;
     seg_options.use_vector_index = options.use_vector_index;
     seg_options.vector_search_option = options.vector_search_option;
+    seg_options.use_s2_index = options.use_s2_index;
+    seg_options.s2_query_type = options.s2_query_type;
+    seg_options.s2_query_lat = options.s2_query_lat;
+    seg_options.s2_query_lng = options.s2_query_lng;
+    seg_options.s2_query_radius_meters = options.s2_query_radius_meters;
+    seg_options.s2_cell_level = options.s2_cell_level;
+    seg_options.s2_max_cells = options.s2_max_cells;
+    seg_options.s2_precomputed_cell_ranges = options.s2_precomputed_cell_ranges;
     seg_options.sample_options = options.sample_options;
     seg_options.enable_join_runtime_filter_pushdown = options.enable_join_runtime_filter_pushdown;
     seg_options.enable_predicate_col_late_materialize = options.enable_predicate_col_late_materialize;

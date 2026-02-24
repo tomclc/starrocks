@@ -77,6 +77,7 @@ statement
     | createIndexStatement
     | dropIndexStatement
     | showIndexStatement
+    | buildIndexStatement
 
     // Task Statement
     | submitTaskStatement
@@ -588,8 +589,12 @@ dropIndexStatement
     : DROP INDEX indexName=identifier ON qualifiedName
     ;
 
+buildIndexStatement
+    : BUILD INDEX indexName=identifier ON qualifiedName
+    ;
+
 indexType
-    : USING (BITMAP | GIN | NGRAMBF | VECTOR)
+    : USING (BITMAP | GIN | NGRAMBF | VECTOR | S2)
     ;
 
 showTableStatement
@@ -3266,7 +3271,7 @@ nonReserved
     : ACCESS | ACTIVE | ADVISOR | AFTER | AGGREGATE | APPLY | ASYNC | AUTHORS | AVG | ADMIN | ANTI | AUTHENTICATION | AUTO_INCREMENT | AUTOMATED
     | ARRAY_AGG | ARRAY_AGG_DISTINCT | ASSERT_ROWS | AWARE
     | BACKEND | BACKENDS | BACKUP | BEGIN | BITMAP_UNION | BLACKLIST | BLACKHOLE | BINARY | BODY | BOOLEAN | BRANCH | BROKER | BUCKETS
-    | BUILTIN | BASE | BEFORE | BASELINE
+    | BUILD | BUILTIN | BASE | BEFORE | BASELINE
     | CACHE | CALL | CAST | CANCEL | CATALOG | CATALOGS | CEIL | CHAIN | CHARSET | CLEAN | CLEAR | CLUSTER | CLUSTERS | CNGROUP | CNGROUPS | CURRENT | COLLATION | COLUMNS
     | CUME_DIST | CUMULATIVE | COMMENT | COMMIT | COMMITTED | COMPUTE | CONNECTION | CONNECTIONS | CONSISTENT | COSTS | COUNT
     | CONFIG | COMPACT
@@ -3299,7 +3304,7 @@ nonReserved
     | VALUE | VARBINARY | VARIABLES | VIEW | VIEWS | VERBOSE | VERSION | VOLUME | VOLUMES
     | WARNINGS | WEEK | WHITELIST | WORK | WRITE  | WAREHOUSE | WAREHOUSES
     | YEAR
-    | DOTDOTDOT | NGRAMBF | VECTOR
+    | DOTDOTDOT | NGRAMBF | VECTOR | S2
     | FIELD
     | ARRAY_ELEMENT
     | PERSISTENT

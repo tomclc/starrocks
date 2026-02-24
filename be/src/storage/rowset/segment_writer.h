@@ -195,6 +195,19 @@ private:
     uint32_t _num_rows = 0;
 
     DictColumnsValidMap _global_dict_columns_valid_info;
+
+    // S2 spatial index state — one writer per S2 index defined on the table.
+    // Managed at segment level because a single S2 index may span multiple columns (lat, lng).
+    struct S2IndexInfo {
+        std::unique_ptr<class S2IndexWriter> writer;
+        // For 2-column mode: indices into the chunk's columns (relative to _column_indexes)
+        int32_t lat_chunk_idx = -1;
+        int32_t lng_chunk_idx = -1;
+        // For 1-column mode: index into the chunk's columns
+        int32_t geo_chunk_idx = -1;
+        bool is_two_column_mode = false;
+    };
+    std::vector<S2IndexInfo> _s2_indexes;
 };
 
 } // namespace starrocks

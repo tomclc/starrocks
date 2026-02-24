@@ -17,6 +17,7 @@ package com.starrocks.sql.optimizer.operator.physical;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import com.starrocks.common.Pair;
+import com.starrocks.common.S2SearchOptions;
 import com.starrocks.connector.iceberg.IcebergMORParams;
 import com.starrocks.connector.iceberg.IcebergTableMORParams;
 import com.starrocks.sql.optimizer.OptExpression;
@@ -40,9 +41,12 @@ public class PhysicalIcebergScanOperator extends PhysicalScanOperator {
     private List<Pair<Integer, ColumnDict>> globalDicts = Lists.newArrayList();
     private Map<Integer, ScalarOperator> globalDictsExpr = Maps.newHashMap();
 
+    private S2SearchOptions s2SearchOptions = null;
+
     public PhysicalIcebergScanOperator(LogicalIcebergScanOperator scanOperator) {
         super(OperatorType.PHYSICAL_ICEBERG_SCAN, scanOperator);
         this.predicates = scanOperator.getScanOperatorPredicates();
+        this.s2SearchOptions = scanOperator.getS2SearchOptions();
     }
 
     private PhysicalIcebergScanOperator() {
@@ -87,6 +91,14 @@ public class PhysicalIcebergScanOperator extends PhysicalScanOperator {
         return globalDictsExpr;
     }
 
+    public S2SearchOptions getS2SearchOptions() {
+        return s2SearchOptions;
+    }
+
+    public void setS2SearchOptions(S2SearchOptions s2SearchOptions) {
+        this.s2SearchOptions = s2SearchOptions;
+    }
+
     @Override
     public <R, C> R accept(OperatorVisitor<R, C> visitor, C context) {
         return visitor.visitPhysicalIcebergScan(this, context);
@@ -122,6 +134,7 @@ public class PhysicalIcebergScanOperator extends PhysicalScanOperator {
             builder.morParams = operator.morParams;
             builder.globalDicts = operator.globalDicts;
             builder.globalDictsExpr = operator.globalDictsExpr;
+            builder.s2SearchOptions = operator.s2SearchOptions;
             return this;
         }
 

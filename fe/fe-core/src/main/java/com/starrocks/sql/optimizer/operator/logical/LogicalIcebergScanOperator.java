@@ -18,6 +18,7 @@ import com.google.common.base.Preconditions;
 import com.starrocks.catalog.Column;
 import com.starrocks.catalog.IcebergTable;
 import com.starrocks.catalog.Table;
+import com.starrocks.common.S2SearchOptions;
 import com.starrocks.common.tvr.TvrDeltaStats;
 import com.starrocks.common.tvr.TvrTableDelta;
 import com.starrocks.common.tvr.TvrTableDeltaTrait;
@@ -54,6 +55,8 @@ public class LogicalIcebergScanOperator extends LogicalScanOperator {
     // Mainly used for table with iceberg equality delete files.
     // Marking this split scan node type after IcebergEqualityDeleteRewriteRule rewriting.
     private IcebergMORParams morParam = IcebergMORParams.EMPTY;
+
+    private S2SearchOptions s2SearchOptions = null;
 
     public LogicalIcebergScanOperator(Table table,
                                       Map<ColumnRefOperator, Column> colRefToColumnMetaMap,
@@ -144,6 +147,14 @@ public class LogicalIcebergScanOperator extends LogicalScanOperator {
         this.morParam = morParam;
     }
 
+    public S2SearchOptions getS2SearchOptions() {
+        return s2SearchOptions;
+    }
+
+    public void setS2SearchOptions(S2SearchOptions s2SearchOptions) {
+        this.s2SearchOptions = s2SearchOptions;
+    }
+
     public boolean hasUnknownColumn() {
         return hasUnknownColumn;
     }
@@ -171,6 +182,12 @@ public class LogicalIcebergScanOperator extends LogicalScanOperator {
             builder.predicates = scanOperator.predicates.clone();
             builder.morParam = scanOperator.morParam;
             builder.tableFullMORParams = scanOperator.tableFullMORParams;
+            builder.s2SearchOptions = scanOperator.s2SearchOptions;
+            return this;
+        }
+
+        public LogicalIcebergScanOperator.Builder setS2SearchOptions(S2SearchOptions s2SearchOptions) {
+            builder.s2SearchOptions = s2SearchOptions;
             return this;
         }
     }

@@ -75,6 +75,7 @@ import com.starrocks.sql.ast.AstVisitorExtendInterface;
 import com.starrocks.sql.ast.BackupStmt;
 import com.starrocks.sql.ast.BaseGrantRevokePrivilegeStmt;
 import com.starrocks.sql.ast.BaseGrantRevokeRoleStmt;
+import com.starrocks.sql.ast.BuildExternalIndexStmt;
 import com.starrocks.sql.ast.CallProcedureStatement;
 import com.starrocks.sql.ast.CancelAlterSystemStmt;
 import com.starrocks.sql.ast.CancelAlterTableStmt;
@@ -446,6 +447,14 @@ public class DDLStmtExecutor {
         public ShowResultSet visitAlterTableStatement(AlterTableStmt stmt, ConnectContext context) {
             ErrorReport.wrapWithRuntimeException(() -> {
                 context.getGlobalStateMgr().getMetadataMgr().alterTable(context, stmt);
+            });
+            return null;
+        }
+
+        @Override
+        public ShowResultSet visitBuildExternalIndexStatement(BuildExternalIndexStmt stmt, ConnectContext context) {
+            ErrorReport.wrapWithRuntimeException(() -> {
+                com.starrocks.connector.iceberg.IcebergS2IndexBuilder.buildIndex(context, stmt);
             });
             return null;
         }

@@ -419,6 +419,8 @@ SET(DW_TEST_FILES
     ./storage/index/vector_index_test.cpp
     ./storage/index/vector_search_test.cpp
     ./storage/index/builtin_inverted_index_test.cpp
+    ./storage/index/s2/s2_index_writer_test.cpp
+    ./storage/index/s2/s2_index_reader_test.cpp
     ./storage/key_coder_test.cpp
     ./storage/kv_store_test.cpp
     ./storage/lake/alter_tablet_meta_test.cpp

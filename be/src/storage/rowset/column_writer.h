@@ -80,6 +80,7 @@ struct ColumnWriterOptions {
     bool need_bloom_filter = false;
     bool need_vector_index = false;
     bool need_inverted_index = false;
+    bool need_s2_index = false;
 
     std::unordered_map<IndexType, std::string> standalone_index_file_paths;
     std::unordered_map<IndexType, TabletIndex> tablet_index;
@@ -140,6 +141,7 @@ class OrdinalIndexWriter;
 class PageBuilder;
 class BloomFilterIndexWriter;
 class ZoneMapIndexWriter;
+class S2IndexWriter;
 
 class ColumnWriter {
 public:
@@ -176,6 +178,8 @@ public:
     virtual Status write_inverted_index() { return Status::OK(); }
 
     virtual Status write_vector_index(uint64_t* index_size) { return Status::OK(); }
+
+    virtual Status write_s2_index(uint64_t* index_size) { return Status::OK(); }
 
     virtual ordinal_t get_next_rowid() const = 0;
 
@@ -231,6 +235,7 @@ public:
     Status write_bitmap_index() override;
     Status write_bloom_filter_index() override;
     Status write_inverted_index() override;
+    Status write_s2_index(uint64_t* index_size) override;
 
     ordinal_t get_next_rowid() const override { return _next_rowid; }
 
@@ -306,6 +311,7 @@ private:
 #ifndef __APPLE__
     std::unique_ptr<InvertedWriter> _inverted_index_builder;
 #endif
+    std::unique_ptr<S2IndexWriter> _s2_index_writer;
 
     // _zone_map_index_builder != NULL || _bitmap_index_builder != NULL || _bloom_filter_index_builder != NULL
     bool _has_index_builder = false;

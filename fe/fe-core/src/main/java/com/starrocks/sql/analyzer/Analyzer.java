@@ -51,6 +51,7 @@ import com.starrocks.sql.ast.BackupStmt;
 import com.starrocks.sql.ast.BaseCreateAlterUserStmt;
 import com.starrocks.sql.ast.BaseGrantRevokePrivilegeStmt;
 import com.starrocks.sql.ast.BaseGrantRevokeRoleStmt;
+import com.starrocks.sql.ast.BuildExternalIndexStmt;
 import com.starrocks.sql.ast.CallProcedureStatement;
 import com.starrocks.sql.ast.CancelAlterSystemStmt;
 import com.starrocks.sql.ast.CancelAlterTableStmt;
@@ -254,6 +255,13 @@ public class Analyzer {
         @Override
         public Void visitAlterTableStatement(AlterTableStmt statement, ConnectContext context) {
             AlterTableStatementAnalyzer.analyze(statement, context);
+            return null;
+        }
+
+        @Override
+        public Void visitBuildExternalIndexStatement(BuildExternalIndexStmt stmt, ConnectContext context) {
+            // Validation is done in IcebergS2IndexBuilder.buildIndex()
+            // Catalog/db name resolution from session defaults also happens there
             return null;
         }
 

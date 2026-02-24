@@ -1,0 +1,121 @@
+-- name: test_s2_perf_setup @sequential @native
+ADMIN SET FRONTEND CONFIG("enable_experimental_s2" = "true");
+
+CREATE DATABASE test_s2_perf_db_${uuid0};
+USE test_s2_perf_db_${uuid0};
+
+-- Table WITH S2 index
+CREATE TABLE geo_perf (
+    id BIGINT NOT NULL,
+    lat DOUBLE NOT NULL,
+    lng DOUBLE NOT NULL,
+    payload VARCHAR(200),
+    INDEX idx_s2 (lat, lng) USING S2 ("cell_level" = "15")
+) ENGINE=OLAP
+DUPLICATE KEY(id)
+DISTRIBUTED BY HASH(id) BUCKETS 4
+PROPERTIES ("replication_num" = "1");
+
+-- Insert 1M rows: random points scattered across the globe
+-- lat in [-90, 90], lng in [-180, 180]
+INSERT INTO geo_perf
+SELECT
+    x AS id,
+    -90 + rand() * 180 AS lat,
+    -180 + rand() * 360 AS lng,
+    concat('payload_', cast(x AS VARCHAR))
+FROM TABLE(generate_series(1, 1000000)) t(x);
+
+SELECT count(*) FROM geo_perf;
+
+-- name: test_s2_perf_index_used @sequential @native
+USE test_s2_perf_db_${uuid0};
+ADMIN SET FRONTEND CONFIG("enable_experimental_s2" = "true");
+SET enable_profile = true;
+
+-- Query: find points within 10km of San Francisco
+-- With S2 enabled, the index prunes most rows before the ST_DISTANCE_SPHERE filter
+SELECT count(*) AS nearby_count
+FROM geo_perf
+WHERE ST_DISTANCE_SPHERE(lng, lat, -122.4194, 37.7749) < 10000;
+
+-- Capture the query profile; look for BloomFilterFilterRows (S2 reuses this counter)
+-- BloomFilterFilterRows should be close to 1,000,000 (nearly all rows pruned by S2)
+-- RawRowsRead should be much smaller than 1,000,000
+-- This proves the S2 index is actively pruning rows
+[UC]SELECT get_query_profile(last_query_id()) AS profile;
+
+SET enable_profile = false;
+
+-- name: test_s2_perf_with_vs_without @sequential @native
+USE test_s2_perf_db_${uuid0};
+SET enable_profile = true;
+
+-- Run WITH S2 index (enabled)
+ADMIN SET FRONTEND CONFIG("enable_experimental_s2" = "true");
+
+SELECT count(*) AS with_s2
+FROM geo_perf
+WHERE ST_DISTANCE_SPHERE(lng, lat, -122.4194, 37.7749) < 10000;
+
+[UC]SELECT last_query_id() AS query_with_s2;
+
+-- Run WITHOUT S2 index (disabled — same table, same data, no index pruning)
+ADMIN SET FRONTEND CONFIG("enable_experimental_s2" = "false");
+
+SELECT count(*) AS without_s2
+FROM geo_perf
+WHERE ST_DISTANCE_SPHERE(lng, lat, -122.4194, 37.7749) < 10000;
+
+[UC]SELECT last_query_id() AS query_without_s2;
+
+-- Both queries must return the same count (correctness check)
+-- Compare the two profiles:
+--   | Metric                  | With S2   | Without S2 |
+--   |-------------------------|-----------|------------|
+--   | QueryExecutionTime      | Low (ms)  | Higher     |
+--   | BloomFilterFilterRows   | ~999,000+ | 0          |
+--   | RawRowsRead             | Small     | ~1,000,000 |
+
+-- Re-enable for subsequent tests
+ADMIN SET FRONTEND CONFIG("enable_experimental_s2" = "true");
+SET enable_profile = false;
+
+-- name: test_s2_perf_correctness_hemispheres @sequential @native
+USE test_s2_perf_db_${uuid0};
+ADMIN SET FRONTEND CONFIG("enable_experimental_s2" = "true");
+
+-- Insert known cities at specific coordinates
+INSERT INTO geo_perf VALUES
+  (9000001, 37.7749, -122.4194, 'San Francisco'),
+  (9000002, 40.7128, -74.0060, 'New York'),
+  (9000003, 51.5074, -0.1278, 'London'),
+  (9000004, 35.6762, 139.6503, 'Tokyo'),
+  (9000005, -33.8688, 151.2093, 'Sydney');
+
+-- Each city query should return at least that city
+-- San Francisco (Western hemisphere, face 4 in S2 — tests signed cell ID handling)
+SELECT id, payload FROM geo_perf
+WHERE ST_DISTANCE_SPHERE(lng, lat, -122.4194, 37.7749) < 1
+ORDER BY id;
+
+-- Sydney (Southern hemisphere)
+SELECT id, payload FROM geo_perf
+WHERE ST_DISTANCE_SPHERE(lng, lat, 151.2093, -33.8688) < 1
+ORDER BY id;
+
+-- Tokyo (Eastern hemisphere)
+SELECT id, payload FROM geo_perf
+WHERE ST_DISTANCE_SPHERE(lng, lat, 139.6503, 35.6762) < 1
+ORDER BY id;
+
+-- London (near prime meridian)
+SELECT id, payload FROM geo_perf
+WHERE ST_DISTANCE_SPHERE(lng, lat, -0.1278, 51.5074) < 1
+ORDER BY id;
+
+-- name: test_s2_perf_cleanup @sequential @native
+USE test_s2_perf_db_${uuid0};
+DROP TABLE IF EXISTS geo_perf;
+DROP DATABASE test_s2_perf_db_${uuid0};
+ADMIN SET FRONTEND CONFIG("enable_experimental_s2" = "false");

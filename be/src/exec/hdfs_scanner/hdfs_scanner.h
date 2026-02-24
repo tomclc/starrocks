@@ -139,6 +139,10 @@ struct HdfsScanStats {
     int64_t deletion_vector_build_count = 0;
     int64_t build_rowid_filter_ns = 0;
 
+    // S2 spatial index
+    int64_t s2_index_filter_ns = 0;
+    int64_t s2_index_rows_filtered = 0;
+
     // reader filter info
     OptimizationCounter _optimzation_counter{};
 };
@@ -284,6 +288,16 @@ struct HdfsScannerParams {
     int64_t connector_max_split_size = 0;
 
     ColumnIdToGlobalDictMap* global_dictmaps = &EMPTY_GLOBAL_DICTMAPS;
+
+    // S2 spatial index parameters for Iceberg sidecar-based filtering
+    bool use_s2_index = false;
+    int64_t s2_index_id = -1;
+    int32_t s2_cell_level = 15;
+    int32_t s2_max_cells = 8;
+    std::string s2_query_type;     // "point", "circle"
+    double s2_query_lat = 0;
+    double s2_query_lng = 0;
+    double s2_query_radius_meters = 0;
 };
 
 struct HdfsScannerContext {

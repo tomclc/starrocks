@@ -22,6 +22,7 @@ import com.starrocks.catalog.Column;
 import com.starrocks.catalog.OlapTable;
 import com.starrocks.catalog.PartitionNames;
 import com.starrocks.catalog.Table;
+import com.starrocks.common.S2SearchOptions;
 import com.starrocks.common.VectorSearchOptions;
 import com.starrocks.sql.ast.TableSampleClause;
 import com.starrocks.sql.optimizer.base.DistributionSpec;
@@ -55,6 +56,8 @@ public final class LogicalOlapScanOperator extends LogicalScanOperator {
     private long gtid = 0;
 
     private VectorSearchOptions vectorSearchOptions = new VectorSearchOptions();
+
+    private S2SearchOptions s2SearchOptions = null;
 
     // Only for UT
     public LogicalOlapScanOperator(Table table) {
@@ -177,6 +180,18 @@ public final class LogicalOlapScanOperator extends LogicalScanOperator {
         this.vectorSearchOptions = vectorSearchOptions;
     }
 
+    public boolean isUseS2Index() {
+        return s2SearchOptions != null && s2SearchOptions.isEnableS2Index();
+    }
+
+    public S2SearchOptions getS2SearchOptions() {
+        return s2SearchOptions;
+    }
+
+    public void setS2SearchOptions(S2SearchOptions s2SearchOptions) {
+        this.s2SearchOptions = s2SearchOptions;
+    }
+
     public TableSampleClause getSample() {
         return sample;
     }
@@ -250,6 +265,7 @@ public final class LogicalOlapScanOperator extends LogicalScanOperator {
             builder.usePkIndex = scanOperator.usePkIndex;
             builder.fromSplitOR = scanOperator.fromSplitOR;
             builder.vectorSearchOptions = scanOperator.vectorSearchOptions;
+            builder.s2SearchOptions = scanOperator.s2SearchOptions;
             builder.sample = scanOperator.getSample();
             return this;
         }
@@ -315,6 +331,11 @@ public final class LogicalOlapScanOperator extends LogicalScanOperator {
 
         public Builder setUsePkIndex(boolean usePkIndex) {
             builder.usePkIndex = usePkIndex;
+            return this;
+        }
+
+        public Builder setS2SearchOptions(S2SearchOptions s2SearchOptions) {
+            builder.s2SearchOptions = s2SearchOptions;
             return this;
         }
 

@@ -272,6 +272,20 @@ Status OlapChunkSource::_init_reader_params(const std::vector<std::unique_ptr<Ol
     if (thrift_olap_scan_node.__isset.enable_gin_filter) {
         _params.enable_gin_filter = thrift_olap_scan_node.enable_gin_filter;
     }
+    // S2 spatial index options
+    if (thrift_olap_scan_node.__isset.s2_search_options &&
+        thrift_olap_scan_node.s2_search_options.__isset.enable_s2_index &&
+        thrift_olap_scan_node.s2_search_options.enable_s2_index) {
+        const auto& s2_opts = thrift_olap_scan_node.s2_search_options;
+        _params.use_s2_index = true;
+        if (s2_opts.__isset.query_type) _params.s2_query_type = s2_opts.query_type;
+        if (s2_opts.__isset.query_lat) _params.s2_query_lat = s2_opts.query_lat;
+        if (s2_opts.__isset.query_lng) _params.s2_query_lng = s2_opts.query_lng;
+        if (s2_opts.__isset.query_radius_meters) _params.s2_query_radius_meters = s2_opts.query_radius_meters;
+        if (s2_opts.__isset.cell_level) _params.s2_cell_level = s2_opts.cell_level;
+        if (s2_opts.__isset.max_cells) _params.s2_max_cells = s2_opts.max_cells;
+    }
+
     _params.use_vector_index = _use_vector_index;
     if (_use_vector_index) {
         const TVectorSearchOptions& vector_options = thrift_olap_scan_node.vector_search_options;

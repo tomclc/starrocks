@@ -115,6 +115,7 @@ import com.starrocks.sql.ast.AsyncRefreshSchemeDesc;
 import com.starrocks.sql.ast.BackupStmt;
 import com.starrocks.sql.ast.BranchOptions;
 import com.starrocks.sql.ast.BrokerDesc;
+import com.starrocks.sql.ast.BuildExternalIndexStmt;
 import com.starrocks.sql.ast.CTERelation;
 import com.starrocks.sql.ast.CallProcedureStatement;
 import com.starrocks.sql.ast.CancelAlterSystemStmt;
@@ -2044,6 +2045,14 @@ public class AstBuilder extends com.starrocks.sql.parser.StarRocksBaseVisitor<Pa
         QualifiedName qualifiedName = getQualifiedName(context.qualifiedName());
         TableRef tableRef = new TableRef(qualifiedName, null, createPos(context.qualifiedName()));
         return new AlterTableStmt(tableRef, Lists.newArrayList(dropIndexClause), createPos(context));
+    }
+
+    @Override
+    public ParseNode visitBuildIndexStatement(com.starrocks.sql.parser.StarRocksParser.BuildIndexStatementContext context) {
+        String indexName = ((Identifier) visit(context.identifier())).getValue();
+        QualifiedName qualifiedName = getQualifiedName(context.qualifiedName());
+        TableRef tableRef = new TableRef(normalizeName(qualifiedName), null, createPos(context.qualifiedName()));
+        return new BuildExternalIndexStmt(indexName, tableRef, createPos(context));
     }
 
     @Override
@@ -9862,6 +9871,8 @@ public class AstBuilder extends com.starrocks.sql.parser.StarRocksBaseVisitor<Pa
             index = IndexDef.IndexType.NGRAMBF;
         } else if (indexTypeContext.VECTOR() != null) {
             index = IndexDef.IndexType.VECTOR;
+        } else if (indexTypeContext.S2() != null) {
+            index = IndexDef.IndexType.S2;
         } else {
             throw new ParsingException("Not specify index type");
         }

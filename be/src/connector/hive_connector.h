@@ -181,6 +181,16 @@ private:
 
     bool _has_scan_range_indicate_const_column = false;
     bool _use_partition_column_value_only = false;
+
+    // S2 spatial index
+    bool _use_s2_index = false;
+    int64_t _s2_index_id = -1;
+    int32_t _s2_cell_level = 15;
+    int32_t _s2_max_cells = 8;
+    std::string _s2_query_type;
+    double _s2_query_lat = 0;
+    double _s2_query_lng = 0;
+    double _s2_query_radius_meters = 0;
     // only used in global late materialization
     int32_t _scan_range_id = -1;
 

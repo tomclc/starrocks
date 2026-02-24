@@ -14,6 +14,11 @@
 
 package com.starrocks.connector.iceberg;
 
+import com.starrocks.catalog.ColumnId;
+import com.starrocks.catalog.ExternalTableIndexManager;
+import com.starrocks.catalog.ExternalTableIndexManager.TableIdentifier;
+import com.starrocks.catalog.Index;
+import com.starrocks.common.Config;
 import com.starrocks.common.DdlException;
 import com.starrocks.connector.ConnectorAlterTableExecutor;
 import com.starrocks.connector.HdfsEnvironment;
@@ -21,6 +26,8 @@ import com.starrocks.connector.exception.StarRocksConnectorException;
 import com.starrocks.connector.iceberg.procedure.IcebergTableProcedure;
 import com.starrocks.connector.iceberg.procedure.IcebergTableProcedureContext;
 import com.starrocks.qe.ConnectContext;
+import com.starrocks.server.GlobalStateMgr;
+import com.starrocks.sql.analyzer.IndexAnalyzer;
 import com.starrocks.sql.analyzer.SemanticException;
 import com.starrocks.sql.ast.AddColumnClause;
 import com.starrocks.sql.ast.AddColumnsClause;
@@ -34,13 +41,16 @@ import com.starrocks.sql.ast.BranchOptions;
 import com.starrocks.sql.ast.ColumnDef;
 import com.starrocks.sql.ast.ColumnPosition;
 import com.starrocks.sql.ast.ColumnRenameClause;
+import com.starrocks.sql.ast.CreateIndexClause;
 import com.starrocks.sql.ast.CreateOrReplaceBranchClause;
 import com.starrocks.sql.ast.CreateOrReplaceTagClause;
 import com.starrocks.sql.ast.DropBranchClause;
 import com.starrocks.sql.ast.DropColumnClause;
 import com.starrocks.sql.ast.DropFieldClause;
+import com.starrocks.sql.ast.DropIndexClause;
 import com.starrocks.sql.ast.DropPartitionColumnClause;
 import com.starrocks.sql.ast.DropTagClause;
+import com.starrocks.sql.ast.IndexDef;
 import com.starrocks.sql.ast.ModifyColumnClause;
 import com.starrocks.sql.ast.ModifyTablePropertiesClause;
 import com.starrocks.sql.ast.TableRenameClause;
@@ -52,6 +62,7 @@ import com.starrocks.sql.ast.expression.SlotRef;
 import com.starrocks.sql.optimizer.operator.scalar.ConstantOperator;
 import org.apache.iceberg.FileFormat;
 import org.apache.iceberg.ManageSnapshots;
+import org.apache.iceberg.Schema;
 import org.apache.iceberg.Snapshot;
 import org.apache.iceberg.SnapshotRef;
 import org.apache.iceberg.Table;
@@ -63,13 +74,17 @@ import org.apache.iceberg.UpdateSchema;
 import org.apache.iceberg.expressions.Expressions;
 import org.apache.iceberg.expressions.Term;
 import org.apache.iceberg.relocated.com.google.common.base.Preconditions;
+import org.apache.iceberg.types.Type.TypeID;
+import org.apache.iceberg.types.Types;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import static com.starrocks.connector.iceberg.IcebergApiConverter.toIcebergColumnType;
 import static com.starrocks.connector.iceberg.IcebergMetadata.COMMENT;
@@ -299,6 +314,88 @@ public class IcebergAlterTableExecutor extends ConnectorAlterTableExecutor {
         AlterTableCommentClause alterTableCommentClause = (AlterTableCommentClause) clause;
         UpdateProperties updateProperties = this.transaction.updateProperties();
         updateProperties.set(COMMENT, alterTableCommentClause.getNewComment()).commit();
+        return null;
+    }
+
+    @Override
+    public Void visitCreateIndexClause(CreateIndexClause clause, ConnectContext context) {
+        actions.add(() -> {
+            IndexDef indexDef = clause.getIndexDef();
+
+            if (indexDef.getIndexType() != IndexDef.IndexType.S2) {
+                throw new StarRocksConnectorException(
+                        "Only S2 spatial index is supported on Iceberg tables, got: " + indexDef.getIndexType());
+            }
+
+            if (!Config.enable_experimental_s2) {
+                throw new StarRocksConnectorException(
+                        "S2 index is disabled. Enable it by setting FE config `enable_experimental_s2` to true");
+            }
+
+            // Validate columns exist in Iceberg schema and have valid types
+            Schema schema = table.schema();
+            for (String colName : indexDef.getColumns()) {
+                Types.NestedField field = schema.findField(colName);
+                if (field == null) {
+                    throw new StarRocksConnectorException("Column '" + colName + "' does not exist in table");
+                }
+                TypeID typeId = field.type().typeId();
+                if (typeId != TypeID.DOUBLE && typeId != TypeID.FLOAT &&
+                        typeId != TypeID.STRING) {
+                    throw new StarRocksConnectorException(
+                            "S2 index column must be DOUBLE/FLOAT (for lat/lng) or STRING (for WKT). " +
+                                    "Column '" + colName + "' has type " + field.type());
+                }
+            }
+
+            ExternalTableIndexManager indexMgr = GlobalStateMgr.getCurrentState().getExternalTableIndexManager();
+            String catalogName = tableName.getCatalog();
+            String dbName = tableName.getDb();
+            String tblName = tableName.getTbl();
+            TableIdentifier tableId = new TableIdentifier(catalogName, dbName, tblName);
+
+            // Check for duplicate index name
+            if (indexMgr.hasIndex(tableId, indexDef.getIndexName())) {
+                throw new StarRocksConnectorException(
+                        "Index '" + indexDef.getIndexName() + "' already exists on table " + tableId);
+            }
+
+            // Build properties with defaults
+            Map<String, String> properties = new HashMap<>(indexDef.getProperties());
+            IndexAnalyzer.addDefaultS2Properties(properties);
+
+            // Create Index object
+            List<ColumnId> columnIds = indexDef.getColumns().stream()
+                    .map(ColumnId::create)
+                    .collect(Collectors.toList());
+
+            long indexId = indexMgr.nextIndexId();
+            Index index = new Index(indexId, indexDef.getIndexName(), columnIds,
+                    indexDef.getIndexType(), indexDef.getComment(), properties);
+
+            indexMgr.addIndex(tableId, index);
+            LOGGER.info("Created S2 index '{}' (id={}) on external table {}", indexDef.getIndexName(), indexId, tableId);
+        });
+        return null;
+    }
+
+    @Override
+    public Void visitDropIndexClause(DropIndexClause clause, ConnectContext context) {
+        actions.add(() -> {
+            ExternalTableIndexManager indexMgr = GlobalStateMgr.getCurrentState().getExternalTableIndexManager();
+            String catalogName = tableName.getCatalog();
+            String dbName = tableName.getDb();
+            String tblName = tableName.getTbl();
+            TableIdentifier tableId = new TableIdentifier(catalogName, dbName, tblName);
+
+            if (!indexMgr.hasIndex(tableId, clause.getIndexName())) {
+                throw new StarRocksConnectorException(
+                        "Index '" + clause.getIndexName() + "' does not exist on table " + tableId);
+            }
+
+            indexMgr.dropIndex(tableId, clause.getIndexName());
+            LOGGER.info("Dropped index '{}' from external table {}", clause.getIndexName(), tableId);
+        });
         return null;
     }
 

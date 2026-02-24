@@ -783,6 +783,10 @@ public interface AstVisitor<R, C> {
         return visitNode(clause, context);
     }
 
+    default R visitBuildExternalIndexStatement(BuildExternalIndexStmt stmt, C context) {
+        return visitDDLStatement(stmt, context);
+    }
+
     default R visitDropRollupClause(DropRollupClause clause, C context) {
         return visitNode(clause, context);
     }

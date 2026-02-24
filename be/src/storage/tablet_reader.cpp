@@ -42,6 +42,7 @@
 #include "storage/tablet.h"
 #include "storage/tablet_updates.h"
 #include "storage/types.h"
+#include "storage/index/s2/s2_index_utils.h"
 #include "storage/union_iterator.h"
 #include "types/logical_type.h"
 #include "util/json_flattener.h"
@@ -290,6 +291,13 @@ Status TabletReader::_init_collector_for_pk_index_read() {
     rs_opts.is_primary_keys = false;
     rs_opts.use_vector_index = _reader_params->use_vector_index;
     rs_opts.vector_search_option = _reader_params->vector_search_option;
+    rs_opts.use_s2_index = _reader_params->use_s2_index;
+    rs_opts.s2_query_type = _reader_params->s2_query_type;
+    rs_opts.s2_query_lat = _reader_params->s2_query_lat;
+    rs_opts.s2_query_lng = _reader_params->s2_query_lng;
+    rs_opts.s2_query_radius_meters = _reader_params->s2_query_radius_meters;
+    rs_opts.s2_cell_level = _reader_params->s2_cell_level;
+    rs_opts.s2_max_cells = _reader_params->s2_max_cells;
     rs_opts.enable_join_runtime_filter_pushdown = _reader_params->enable_join_runtime_filter_pushdown;
 
     rs_opts.rowid_range_option = std::make_shared<RowidRangeOption>();
@@ -366,6 +374,26 @@ Status TabletReader::get_segment_iterators(const TabletReaderParams& params, std
     rs_opts.column_access_paths = params.column_access_paths;
     rs_opts.use_vector_index = params.use_vector_index;
     rs_opts.vector_search_option = params.vector_search_option;
+    rs_opts.use_s2_index = params.use_s2_index;
+    rs_opts.s2_query_type = params.s2_query_type;
+    rs_opts.s2_query_lat = params.s2_query_lat;
+    rs_opts.s2_query_lng = params.s2_query_lng;
+    rs_opts.s2_query_radius_meters = params.s2_query_radius_meters;
+    rs_opts.s2_cell_level = params.s2_cell_level;
+    rs_opts.s2_max_cells = params.s2_max_cells;
+    if (params.use_s2_index) {
+        auto ranges = std::make_shared<std::vector<S2CellIdRange>>();
+        if (params.s2_query_type == "circle") {
+            RETURN_IF_ERROR(compute_cell_ranges_for_cap(params.s2_query_lat, params.s2_query_lng,
+                                                        params.s2_query_radius_meters, params.s2_cell_level,
+                                                        params.s2_max_cells, ranges.get()));
+        } else if (params.s2_query_type == "point") {
+            RETURN_IF_ERROR(
+                    compute_cell_ranges_for_point(params.s2_query_lat, params.s2_query_lng, params.s2_cell_level,
+                                                  ranges.get()));
+        }
+        rs_opts.s2_precomputed_cell_ranges = std::move(ranges);
+    }
     rs_opts.sample_options = params.sample_options;
     rs_opts.enable_join_runtime_filter_pushdown = params.enable_join_runtime_filter_pushdown;
     rs_opts.enable_predicate_col_late_materialize = params.enable_predicate_col_late_materialize;

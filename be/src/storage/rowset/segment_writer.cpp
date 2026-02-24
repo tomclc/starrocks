@@ -49,6 +49,7 @@
 #include "gen_cpp/segment.pb.h"
 #include "storage/chunk_variant_helper.h"
 #include "storage/index/index_descriptor.h"
+#include "storage/index/s2/s2_index_writer.h"
 #include "storage/row_store_encoder.h"
 #include "storage/rowset/column_writer.h" // ColumnWriter
 #include "storage/rowset/json_column_writer.h"
@@ -181,6 +182,8 @@ Status SegmentWriter::init(const std::vector<uint32_t>& column_indexes, bool has
         opts.need_bitmap_index = column.has_bitmap_index();
         opts.need_inverted_index = _tablet_schema->has_index(column.unique_id(), GIN);
         opts.need_vector_index = _tablet_schema->has_index(column.unique_id(), IndexType::VECTOR);
+        // NOTE: S2 index is handled at segment level, not per-column.
+        opts.need_s2_index = false;
 
         RETURN_IF_ERROR(_tablet_schema->get_indexes_for_column(column.unique_id(), &opts.tablet_index));
         if (opts.need_inverted_index) {
@@ -195,7 +198,6 @@ Status SegmentWriter::init(const std::vector<uint32_t>& column_indexes, bool has
                                                             _opts.segment_file_mark.rowset_id, _segment_id,
                                                             opts.tablet_index.at(IndexType::VECTOR).index_id()));
         }
-
         if (column.type() == LogicalType::TYPE_ARRAY) {
             if (opts.need_bloom_filter) {
                 return Status::NotSupported("Do not support bloom filter for array type");
@@ -273,6 +275,50 @@ Status SegmentWriter::init(const std::vector<uint32_t>& column_indexes, bool has
         _schema_without_full_row_column = std::make_unique<Schema>(_tablet_schema->schema(), cids);
     }
 
+    // Initialize segment-level S2 index writers.
+    // Each S2 index maps to one writer, covering 1 or 2 columns.
+    if (_tablet_schema->indexes()) {
+        for (const auto& index : *_tablet_schema->indexes()) {
+            if (index.index_type() != IndexType::S2) continue;
+
+            S2IndexInfo info;
+            const auto& col_uids = index.col_unique_ids();
+
+            // Map column unique IDs to chunk-relative indices
+            for (uint32_t i = 0; i < _column_indexes.size(); i++) {
+                uint32_t col_idx = _column_indexes[i];
+                int32_t uid = _tablet_schema->column(col_idx).unique_id();
+                if (col_uids.size() == 2) {
+                    if (uid == col_uids[0]) info.lat_chunk_idx = static_cast<int32_t>(i);
+                    if (uid == col_uids[1]) info.lng_chunk_idx = static_cast<int32_t>(i);
+                } else if (col_uids.size() == 1) {
+                    if (uid == col_uids[0]) info.geo_chunk_idx = static_cast<int32_t>(i);
+                }
+            }
+
+            if (col_uids.size() == 2) {
+                info.is_two_column_mode = true;
+                if (info.lat_chunk_idx < 0 || info.lng_chunk_idx < 0) {
+                    // Columns not in this writer batch (e.g., vertical compaction of value columns only)
+                    continue;
+                }
+            } else {
+                info.is_two_column_mode = false;
+                if (info.geo_chunk_idx < 0) {
+                    continue;
+                }
+            }
+
+            std::string index_path = IndexDescriptor::s2_index_file_path(
+                    _opts.segment_file_mark.rowset_path_prefix, _opts.segment_file_mark.rowset_id,
+                    _segment_id, index.index_id());
+            auto tablet_index = std::make_shared<TabletIndex>(index);
+            RETURN_IF_ERROR(S2IndexWriter::create(tablet_index, index_path, &info.writer));
+            RETURN_IF_ERROR(info.writer->init());
+            _s2_indexes.push_back(std::move(info));
+        }
+    }
+
     _verify_footer();
 
     return Status::OK();
@@ -334,6 +380,7 @@ Status SegmentWriter::finalize_columns(uint64_t* index_size) {
 
         uint64_t standalone_index_size = 0;
         RETURN_IF_ERROR(column_writer->write_vector_index(&standalone_index_size));
+        RETURN_IF_ERROR(column_writer->write_s2_index(&standalone_index_size));
         *index_size += _wfile->size() - index_offset + standalone_index_size;
 
         // check global dict valid
@@ -344,6 +391,14 @@ Status SegmentWriter::finalize_columns(uint64_t* index_size) {
     }
     _column_writers.clear();
     _column_indexes.clear();
+
+    // Finalize segment-level S2 index writers
+    for (auto& s2_info : _s2_indexes) {
+        uint64_t s2_size = 0;
+        RETURN_IF_ERROR(s2_info.writer->finish(&s2_size));
+        *index_size += s2_size;
+    }
+    _s2_indexes.clear();
 
     if (_has_key) {
         uint64_t index_offset = _wfile->size();
@@ -411,6 +466,18 @@ Status SegmentWriter::append_chunk(const Chunk& chunk) {
     for (size_t i = 0; i < chunk_num_columns; ++i) {
         const Column* col = chunk.get_column_raw_ptr_by_index(i);
         RETURN_IF_ERROR(_column_writers[i]->append(*col));
+    }
+
+    // Append to S2 spatial index writers at chunk level
+    for (auto& s2_info : _s2_indexes) {
+        if (s2_info.is_two_column_mode) {
+            const Column* lat_col = chunk.get_column_raw_ptr_by_index(s2_info.lat_chunk_idx);
+            const Column* lng_col = chunk.get_column_raw_ptr_by_index(s2_info.lng_chunk_idx);
+            RETURN_IF_ERROR(s2_info.writer->append_lat_lng(*lat_col, *lng_col, chunk_num_rows));
+        } else {
+            const Column* geo_col = chunk.get_column_raw_ptr_by_index(s2_info.geo_chunk_idx);
+            RETURN_IF_ERROR(s2_info.writer->append_wkt(*geo_col, chunk_num_rows));
+        }
     }
 
     // TODO(cbl): put the fill full row column logic here is a bit hacky, this segment writer is used in many other

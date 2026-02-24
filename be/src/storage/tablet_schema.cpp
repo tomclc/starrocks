@@ -667,8 +667,8 @@ Status TabletSchema::get_indexes_for_column(int32_t col_unique_id,
                 res->emplace(index.index_type(), index);
             }
         } else if (index.col_unique_ids().size() > 1) {
-            // TODO: implement multi-column index
-            return Status::NotSupported("Multi-column index is not supported for now. ");
+            // Multi-column indexes (e.g., S2) are not looked up per-column; skip them.
+            continue;
         }
     }
     return Status::OK();

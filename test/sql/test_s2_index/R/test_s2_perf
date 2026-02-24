@@ -1,0 +1,146 @@
+-- name: test_s2_perf_setup @sequential @native
+ADMIN SET FRONTEND CONFIG("enable_experimental_s2" = "true");
+-- result:
+-- !result
+CREATE DATABASE test_s2_perf_db_${uuid0};
+-- result:
+-- !result
+USE test_s2_perf_db_${uuid0};
+-- result:
+-- !result
+CREATE TABLE geo_perf (
+    id BIGINT NOT NULL,
+    lat DOUBLE NOT NULL,
+    lng DOUBLE NOT NULL,
+    payload VARCHAR(200),
+    INDEX idx_s2 (lat, lng) USING S2 ("cell_level" = "15")
+) ENGINE=OLAP
+DUPLICATE KEY(id)
+DISTRIBUTED BY HASH(id) BUCKETS 4
+PROPERTIES ("replication_num" = "1");
+-- result:
+-- !result
+INSERT INTO geo_perf
+SELECT
+    x AS id,
+    -90 + rand() * 180 AS lat,
+    -180 + rand() * 360 AS lng,
+    concat('payload_', cast(x AS VARCHAR))
+FROM TABLE(generate_series(1, 1000000)) t(x);
+-- result:
+-- !result
+SELECT count(*) FROM geo_perf;
+-- result:
+1000000
+-- !result
+-- name: test_s2_perf_index_used @sequential @native
+USE test_s2_perf_db_${uuid0};
+-- result:
+-- !result
+ADMIN SET FRONTEND CONFIG("enable_experimental_s2" = "true");
+-- result:
+-- !result
+SET enable_profile = true;
+-- result:
+-- !result
+SELECT count(*) AS nearby_count
+FROM geo_perf
+WHERE ST_DISTANCE_SPHERE(lng, lat, -122.4194, 37.7749) < 10000;
+-- result:
+[REGEX].*
+-- !result
+[UC]SELECT get_query_profile(last_query_id()) AS profile;
+-- result:
+-- !result
+SET enable_profile = false;
+-- result:
+-- !result
+-- name: test_s2_perf_with_vs_without @sequential @native
+USE test_s2_perf_db_${uuid0};
+-- result:
+-- !result
+SET enable_profile = true;
+-- result:
+-- !result
+ADMIN SET FRONTEND CONFIG("enable_experimental_s2" = "true");
+-- result:
+-- !result
+SELECT count(*) AS with_s2
+FROM geo_perf
+WHERE ST_DISTANCE_SPHERE(lng, lat, -122.4194, 37.7749) < 10000;
+-- result:
+[REGEX].*
+-- !result
+[UC]SELECT last_query_id() AS query_with_s2;
+-- result:
+-- !result
+ADMIN SET FRONTEND CONFIG("enable_experimental_s2" = "false");
+-- result:
+-- !result
+SELECT count(*) AS without_s2
+FROM geo_perf
+WHERE ST_DISTANCE_SPHERE(lng, lat, -122.4194, 37.7749) < 10000;
+-- result:
+[REGEX].*
+-- !result
+[UC]SELECT last_query_id() AS query_without_s2;
+-- result:
+-- !result
+ADMIN SET FRONTEND CONFIG("enable_experimental_s2" = "true");
+-- result:
+-- !result
+SET enable_profile = false;
+-- result:
+-- !result
+-- name: test_s2_perf_correctness_hemispheres @sequential @native
+USE test_s2_perf_db_${uuid0};
+-- result:
+-- !result
+ADMIN SET FRONTEND CONFIG("enable_experimental_s2" = "true");
+-- result:
+-- !result
+INSERT INTO geo_perf VALUES
+  (9000001, 37.7749, -122.4194, 'San Francisco'),
+  (9000002, 40.7128, -74.0060, 'New York'),
+  (9000003, 51.5074, -0.1278, 'London'),
+  (9000004, 35.6762, 139.6503, 'Tokyo'),
+  (9000005, -33.8688, 151.2093, 'Sydney');
+-- result:
+-- !result
+SELECT id, payload FROM geo_perf
+WHERE ST_DISTANCE_SPHERE(lng, lat, -122.4194, 37.7749) < 1
+ORDER BY id;
+-- result:
+9000001	San Francisco
+-- !result
+SELECT id, payload FROM geo_perf
+WHERE ST_DISTANCE_SPHERE(lng, lat, 151.2093, -33.8688) < 1
+ORDER BY id;
+-- result:
+9000005	Sydney
+-- !result
+SELECT id, payload FROM geo_perf
+WHERE ST_DISTANCE_SPHERE(lng, lat, 139.6503, 35.6762) < 1
+ORDER BY id;
+-- result:
+9000004	Tokyo
+-- !result
+SELECT id, payload FROM geo_perf
+WHERE ST_DISTANCE_SPHERE(lng, lat, -0.1278, 51.5074) < 1
+ORDER BY id;
+-- result:
+9000003	London
+-- !result
+-- name: test_s2_perf_cleanup @sequential @native
+USE test_s2_perf_db_${uuid0};
+-- result:
+-- !result
+DROP TABLE IF EXISTS geo_perf;
+-- result:
+-- !result
+DROP DATABASE test_s2_perf_db_${uuid0};
+-- result:
+-- !result
+ADMIN SET FRONTEND CONFIG("enable_experimental_s2" = "false");
+-- result:
+-- !result
